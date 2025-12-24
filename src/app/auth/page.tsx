@@ -1,13 +1,20 @@
 'use client';
 
-// ✅ Disable static generation to avoid build-time Supabase/client errors
+// ✅ Must be placed immediately after "use client" directive
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
-import { useState } from 'react';
-import { useAuth } from '@/hooks/useAuth';
+import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
+// ✅ Dynamically import the auth hook to prevent server-side execution
+import { useAuth } from '@/hooks/useAuth';
+
 export default function AuthPage() {
+  // ✅ State to track if component is mounted (client-side only)
+  const [isMounted, setIsMounted] = useState(false);
+  
+  // ✅ Auth hook should only be used after component mounts
   const { signUp, signIn, loading: authLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -20,6 +27,25 @@ export default function AuthPage() {
   const [loading, setLoading] = useState(false);
 
   const isSignUp = mode === 'signup';
+
+  // ✅ Set mounted state to true only on client-side
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  // ✅ Don't render auth content until component is mounted on client
+  if (!isMounted) {
+    return null;
+  }
+
+  // ✅ Show loading state from auth hook, but only after mounting
+  if (authLoading) {
+    return (
+      <div style={styles.centered}>
+        Loading...
+      </div>
+    );
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,14 +68,6 @@ export default function AuthPage() {
       setLoading(false);
     }
   };
-
-  if (authLoading) {
-    return (
-      <div style={styles.centered}>
-        Loading...
-      </div>
-    );
-  }
 
   return (
     <div style={styles.centered}>
@@ -141,7 +159,7 @@ export default function AuthPage() {
         </div>
 
         <div style={styles.footer}>
-          You’re never alone. This space is here for you.
+          You're never alone. This space is here for you.
         </div>
       </div>
     </div>
