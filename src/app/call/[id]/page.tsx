@@ -1,275 +1,529 @@
 // src/app/call/[id]/page.tsx
 'use client';
 
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useState, useRef, useEffect } from 'react';
-import { Room, RemoteParticipant, Track } from 'livekit-client';
-import { Loader2, Mic, MicOff, Video, VideoOff, PhoneOff, Users } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
+import { Room, RemoteParticipant, LocalParticipant, Track, RemoteTrackPublication, RemoteTrack } from 'livekit-client';
+import { 
+  PhoneOff, 
+  Mic, 
+  MicOff, 
+  Video, 
+  VideoOff, 
+  Users, 
+  MessageSquare, 
+  Loader2,
+  ArrowLeft,
+  Heart,
+  Clock
+} from 'lucide-react';
 import Button from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 
-type SessionType = 'one_on_one' | 'group';
+type GriefType =
+  | 'parent'
+  | 'child'
+  | 'spouse'
+  | 'sibling'
+  | 'friend'
+  | 'pet'
+  | 'miscarriage'
+  | 'caregiver'
+  | 'suicide'
+  | 'other';
 
 interface Session {
   id: string;
-  session_type: SessionType;
-  title: string;
-  host_id: string;
+  session_type: 'one_on_one' | 'group';
   status: 'pending' | 'active' | 'ended';
+  grief_types: GriefType[];
+  host_id: string;
+  title: string;
+  created_at: string;
+}
+
+interface Profile {
+  id: string;
+  full_name: string | null;
+}
+
+interface SessionParticipant {
+  user_id: string;
+  joined_at: string;
+  profiles: Profile[] | null;
 }
 
 export default function CallPage() {
   const params = useParams();
+  const sessionId = params.id as string;
   const router = useRouter();
-  const { user } = useAuth();
   const supabase = createClient();
-
-  const sessionId = params?.id as string;
-  const roomRef = useRef<Room | null>(null);
-  const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
-  const videoElementsRef = useRef<Map<string, HTMLVideoElement>>(new Map());
-
-  const [session, setSession] = useState<Session | null>(null);
+  const { user, loading: authLoading } = useAuth();
+  
+  // LiveKit state
+  const [room, setRoom] = useState<Room | null>(null);
   const [isConnected, setIsConnected] = useState(false);
-  const [remoteParticipants, setRemoteParticipants] = useState<RemoteParticipant[]>([]);
-  const [statusMessage, setStatusMessage] = useState('Connecting to the support space...');
-  const [isMicMuted, setIsMicMuted] = useState(false);
-  const [isCameraEnabled, setIsCameraEnabled] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [isAudioMuted, setIsAudioMuted] = useState(false);
+  const [isVideoMuted, setIsVideoMuted] = useState(false);
+  const [participants, setParticipants] = useState<RemoteParticipant[]>([]);
+  const [localParticipant, setLocalParticipant] = useState<LocalParticipant | null>(null);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState(true);
+  const [sessionInfo, setSessionInfo] = useState<Session | null>(null);
+  const [sessionParticipants, setSessionParticipants] = useState<SessionParticipant[]>([]);
 
-  const log = (msg: string) => {
-    console.log('[CallPage]', msg);
-    setStatusMessage(msg);
+  // Refs for media elements
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteVideoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
+  const remoteAudioRefs = useRef<Map<string, HTMLAudioElement>>(new Map());
+
+  // Grief type labels for display
+  const griefTypeLabels: Record<GriefType, string> = {
+    parent: 'Loss of a Parent',
+    child: 'Loss of a Child',
+    spouse: 'Grieving a Partner',
+    sibling: 'Loss of a Sibling',
+    friend: 'Loss of a Friend',
+    pet: 'Pet Loss',
+    miscarriage: 'Pregnancy or Infant Loss',
+    caregiver: 'Caregiver Grief',
+    suicide: 'Suicide Loss',
+    other: 'Other Loss',
   };
 
-  const cleanupMediaElement = (identity: string, type: 'audio' | 'video') => {
-    const ref = type === 'audio' ? audioElementsRef : videoElementsRef;
-    const el = ref.current.get(identity);
-    if (el) {
-      if (type === 'audio' && el instanceof HTMLAudioElement) {
-        el.pause();
-        el.srcObject = null;
-        el.remove();
-      } else if (type === 'video' && el instanceof HTMLVideoElement) {
-        el.pause();
-        el.srcObject = null;
-        el.remove();
-      }
-      ref.current.delete(identity);
+  // Cleanup function for media elements
+  const cleanupMediaElements = () => {
+    // Cleanup local video
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = null;
     }
+
+    // Cleanup remote videos
+    remoteVideoRefs.current.forEach((videoEl, identity) => {
+      videoEl.pause();
+      videoEl.srcObject = null;
+      videoEl.remove();
+    });
+    remoteVideoRefs.current.clear();
+
+    // Cleanup remote audios
+    remoteAudioRefs.current.forEach((audioEl, identity) => {
+      audioEl.pause();
+      audioEl.srcObject = null;
+      audioEl.remove();
+    });
+    remoteAudioRefs.current.clear();
   };
 
-  const cleanupAllMedia = () => {
-    audioElementsRef.current.forEach((_, identity) => cleanupMediaElement(identity, 'audio'));
-    videoElementsRef.current.forEach((_, identity) => cleanupMediaElement(identity, 'video'));
-  };
-
-  const fetchSession = async () => {
-    if (!sessionId) {
-      setError('Invalid session ID');
-      return;
-    }
+  // Fetch session details and participants
+  const fetchSessionDetails = async () => {
+    if (!sessionId || !user) return;
 
     try {
-      const { data, error } = await supabase
+      // Get session info
+      const { data: sessionData, error: sessionError } = await supabase
         .from('sessions')
         .select('*')
         .eq('id', sessionId)
         .single();
 
-      if (error) throw error;
-      setSession(data);
-    } catch (err) {
-      console.error('Failed to fetch session:', err);
-      setError('Session not found or inaccessible.');
-    } finally {
-      setLoading(false);
+      if (sessionError) throw sessionError;
+      setSessionInfo(sessionData);
+
+      // Get participants with profile info
+      const { data: participantsData, error: participantsError } = await supabase
+        .from('session_participants')
+        .select(`
+          user_id,
+          joined_at,
+          profiles: user_id (id, full_name)
+        `)
+        .eq('session_id', sessionId);
+
+      if (participantsError) throw participantsError;
+
+      setSessionParticipants(participantsData || []);
+      
+      return {
+        session: sessionData,
+        participants: participantsData
+      };
+    } catch (error) {
+      console.error('Error fetching session details:', error);
+      setConnectionError('Failed to load session details. Please try again.');
+      return null;
     }
   };
 
+  // Connect to LiveKit room
   const connectToRoom = async () => {
-    if (!user || !session) return;
+    if (!sessionId || !user) {
+      setConnectionError('Missing session ID or user information');
+      return;
+    }
 
     try {
-      log('Requesting LiveKit token...');
-      const res = await fetch('/api/livekit/token', {
+      setConnecting(true);
+      setConnectionError(null);
+
+      // Get LiveKit token
+      const response = await fetch('/api/livekit/token', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
           roomName: sessionId,
-          isHost: session.host_id === user.id,
-          sessionType: session.session_type,
+          identity: user.id,
+          name: user.user_metadata.full_name || 'Anonymous'
         }),
       });
 
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Token fetch failed: ${res.status} ${text}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to get LiveKit token: ${response.status} ${errorText}`);
       }
 
-      const { token, url } = await res.json();
+      const { token, url } = await response.json();
       if (!token || !url) {
-        throw new Error('Missing token or LiveKit URL');
+        throw new Error('Missing token or LiveKit URL in response');
       }
 
-      log('Connecting to LiveKit room...');
-      const room = new Room();
-      roomRef.current = room;
-
-      // Track participants
-      room.on('participantConnected', (participant) => {
-        log(`${participant.identity} joined the room.`);
-        setRemoteParticipants((prev) =>
-          prev.some((p) => p.identity === participant.identity)
-            ? prev
-            : [...prev, participant]
-        );
-      });
-
-      room.on('participantDisconnected', (participant) => {
-        log(`${participant.identity} left the room.`);
-        setRemoteParticipants((prev) =>
-          prev.filter((p) => p.identity !== participant.identity)
-        );
-        cleanupMediaElement(participant.identity, 'audio');
-        cleanupMediaElement(participant.identity, 'video');
-      });
-
-      // Handle tracks
-      room.on('trackSubscribed', (track, publication, participant) => {
-        if (publication.kind === 'audio') {
-          let audioEl = audioElementsRef.current.get(participant.identity);
-          if (!audioEl) {
-            audioEl = document.createElement('audio');
-            audioEl.setAttribute('playsinline', 'true');
-            document.body.appendChild(audioEl);
-            audioElementsRef.current.set(participant.identity, audioEl);
-          }
-          track.attach(audioEl);
-          audioEl.play().catch(() => {
-            // Autoplay may be blocked—acceptable
-          });
-        } else if (publication.kind === 'video') {
-          let videoEl = videoElementsRef.current.get(participant.identity);
-          if (!videoEl) {
-            videoEl = document.createElement('video');
-            videoEl.setAttribute('playsinline', 'true');
-            videoEl.className = 'absolute inset-0 w-full h-full object-cover';
-            const container = document.getElementById(`video-${participant.identity}`);
-            if (container) {
-              container.appendChild(videoEl);
-            }
-            videoElementsRef.current.set(participant.identity, videoEl);
-          }
-          track.attach(videoEl);
+      // Create and connect to room
+      const newRoom = new Room({
+        adaptiveStream: true,
+        dynacast: true,
+        videoCaptureDefaults: {
+          resolution: { width: 1280, height: 720 }
         }
       });
 
-      room.on('trackUnsubscribed', (track, _, participant) => {
-        track.detach();
-        if (participant) {
-          if (track.kind === 'audio') {
-            cleanupMediaElement(participant.identity, 'audio');
-          } else {
-            cleanupMediaElement(participant.identity, 'video');
-          }
+      // Setup event listeners before connecting
+      setupRoomEventListeners(newRoom);
+
+      // Connect to room
+      await newRoom.connect(url, token);
+      
+      // Set up local participant
+      const localParticipant = newRoom.localParticipant;
+      setLocalParticipant(localParticipant);
+      
+      // Set up local video
+      if (localVideoRef.current) {
+        const videoTrack = await localParticipant.createTracks({
+          video: { resolution: { width: 1280, height: 720 } }
+        });
+        
+        if (videoTrack[0]) {
+          videoTrack[0].attach(localVideoRef.current);
         }
-      });
+        
+        await localParticipant.setMicrophoneEnabled(true);
+        await localParticipant.setCameraEnabled(true);
+        
+        // Set initial mute states
+        setIsAudioMuted(false);
+        setIsVideoMuted(false);
+      }
 
-      room.on('disconnected', () => {
-        log('Disconnected from room.');
-        setIsConnected(false);
-        setRemoteParticipants([]);
-        cleanupAllMedia();
-      });
+      // Update session status to active if it's still pending
+      const { data: sessionData, error: sessionError } = await supabase
+        .from('sessions')
+        .select('status')
+        .eq('id', sessionId)
+        .single();
 
-      await room.connect(url, token);
-      log('Connected successfully!');
+      if (!sessionError && sessionData?.status === 'pending') {
+        await supabase
+          .from('sessions')
+          .update({ status: 'active' })
+          .eq('id', sessionId);
+      }
 
-      // Enable local media
-      await room.localParticipant.setMicrophoneEnabled(true);
-      await room.localParticipant.setCameraEnabled(false); // Start with camera off
-
+      setRoom(newRoom);
       setIsConnected(true);
-      setStatusMessage('Connected — you’re in the support space.');
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
-      console.error('[CallPage] Connection error:', err);
-      setError(`Failed to join call: ${msg}`);
-      log(`Error: ${msg}`);
+      
+      console.log('Successfully connected to LiveKit room:', sessionId);
+    } catch (error) {
+      console.error('Error connecting to LiveKit room:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to connect to the call';
+      setConnectionError(errorMessage);
+    } finally {
+      setConnecting(false);
     }
   };
 
-  const disconnect = () => {
-    if (roomRef.current) {
-      roomRef.current.disconnect();
-    }
-    router.push('/connect');
-  };
+  // Setup event listeners for the room
+  const setupRoomEventListeners = (room: Room) => {
+    // Participant connected
+    room.on('participantConnected', (participant: RemoteParticipant) => {
+      console.log(`Participant connected: ${participant.identity}`);
+      
+      setParticipants(prev => {
+        if (!prev.some(p => p.identity === participant.identity)) {
+          return [...prev, participant];
+        }
+        return prev;
+      });
+    });
 
-  const toggleMic = async () => {
-    if (!roomRef.current) return;
-    const newState = !isMicMuted;
-    try {
-      await roomRef.current.localParticipant.setMicrophoneEnabled(!newState);
-      setIsMicMuted(newState);
-    } catch (err) {
-      console.error('Mic toggle error:', err);
-    }
-  };
-
-  const toggleCamera = async () => {
-    if (!roomRef.current) return;
-    const newState = !isCameraEnabled;
-    try {
-      await roomRef.current.localParticipant.setCameraEnabled(newState);
-      setIsCameraEnabled(newState);
-    } catch (err) {
-      console.error('Camera toggle error:', err);
-    }
-  };
-
-  // Fetch session on mount
-  useEffect(() => {
-    fetchSession();
-  }, [sessionId]);
-
-  // Connect once session and user are ready
-  useEffect(() => {
-    if (user && session && !isConnected && !error) {
-      connectToRoom();
-    }
-  }, [user, session, isConnected, error]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (roomRef.current) {
-        roomRef.current.disconnect();
+    // Participant disconnected
+    room.on('participantDisconnected', (participant: RemoteParticipant) => {
+      console.log(`Participant disconnected: ${participant.identity}`);
+      
+      // Cleanup media elements for this participant
+      if (remoteVideoRefs.current.has(participant.identity)) {
+        const videoEl = remoteVideoRefs.current.get(participant.identity);
+        if (videoEl) {
+          videoEl.srcObject = null;
+          videoEl.remove();
+        }
+        remoteVideoRefs.current.delete(participant.identity);
       }
-      cleanupAllMedia();
-    };
-  }, []);
 
-  if (loading) {
+      if (remoteAudioRefs.current.has(participant.identity)) {
+        const audioEl = remoteAudioRefs.current.get(participant.identity);
+        if (audioEl) {
+          audioEl.srcObject = null;
+          audioEl.remove();
+        }
+        remoteAudioRefs.current.delete(participant.identity);
+      }
+
+      setParticipants(prev => prev.filter(p => p.identity !== participant.identity));
+    });
+
+    // Track subscribed (audio or video)
+    room.on('trackSubscribed', (track: RemoteTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
+      console.log(`Track subscribed from ${participant.identity}: ${track.kind}`);
+      
+      if (track.kind === 'audio') {
+        let audioEl = remoteAudioRefs.current.get(participant.identity);
+        if (!audioEl) {
+          audioEl = document.createElement('audio');
+          audioEl.autoplay = true;
+          audioEl.setAttribute('playsinline', 'true');
+          document.body.appendChild(audioEl);
+          remoteAudioRefs.current.set(participant.identity, audioEl);
+        }
+        track.attach(audioEl);
+      } else if (track.kind === 'video') {
+        let videoEl = remoteVideoRefs.current.get(participant.identity);
+        if (!videoEl) {
+          videoEl = document.createElement('video');
+          videoEl.autoplay = true;
+          videoEl.setAttribute('playsinline', 'true');
+          videoEl.className = 'w-full h-full object-cover rounded-lg';
+          remoteVideoRefs.current.set(participant.identity, videoEl);
+        }
+        track.attach(videoEl);
+      }
+    });
+
+    // Track unsubscribed
+    room.on('trackUnsubscribed', (track: RemoteTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
+      track.detach();
+    });
+
+    // Room disconnected
+    room.on('disconnected', () => {
+      console.log('Disconnected from room');
+      setIsConnected(false);
+      cleanupMediaElements();
+    });
+  };
+
+  // Toggle audio mute
+  const toggleAudioMute = async () => {
+    if (!room || !localParticipant) return;
+    
+    try {
+      const newState = !isAudioMuted;
+      await localParticipant.setMicrophoneEnabled(!newState);
+      setIsAudioMuted(newState);
+      console.log(newState ? 'Microphone muted' : 'Microphone unmuted');
+    } catch (error) {
+      console.error('Error toggling microphone:', error);
+    }
+  };
+
+  // Toggle video mute
+  const toggleVideoMute = async () => {
+    if (!room || !localParticipant) return;
+    
+    try {
+      const newState = !isVideoMuted;
+      await localParticipant.setCameraEnabled(!newState);
+      setIsVideoMuted(newState);
+      console.log(newState ? 'Camera disabled' : 'Camera enabled');
+    } catch (error) {
+      console.error('Error toggling camera:', error);
+    }
+  };
+
+  // Leave the room
+  const leaveRoom = async () => {
+    if (room) {
+      room.disconnect();
+      cleanupMediaElements();
+      setIsConnected(false);
+      
+      // Update session status if this was the last participant
+      if (sessionInfo?.status === 'active') {
+        const { count } = await supabase
+          .from('session_participants')
+          .select('*', { count: 'exact', head: true })
+          .eq('session_id', sessionId);
+        
+        if (count !== null && count <= 1) { // Only this user remaining
+          await supabase
+            .from('sessions')
+            .update({ status: 'ended' })
+            .eq('id', sessionId);
+        }
+      }
+      
+      router.push('/connect');
+    }
+  };
+
+  // Initialize - fetch session details and connect
+  useEffect(() => {
+    if (authLoading || !user) return;
+
+    const initCall = async () => {
+      const sessionData = await fetchSessionDetails();
+      if (sessionData) {
+        await connectToRoom();
+      }
+    };
+
+    initCall();
+
+    // Setup interval to update session status
+    const statusInterval = setInterval(async () => {
+      if (isConnected) {
+        // Check if session should be ended due to inactivity
+        const { data: participantsData, error: participantsError } = await supabase
+          .from('session_participants')
+          .select('user_id')
+          .eq('session_id', sessionId);
+
+        if (!participantsError && participantsData && participantsData.length === 0) {
+          await supabase
+            .from('sessions')
+            .update({ status: 'ended' })
+            .eq('id', sessionId);
+          leaveRoom();
+        }
+      }
+    }, 30000); // Check every 30 seconds
+
+    return () => {
+      clearInterval(statusInterval);
+      if (room) {
+        room.disconnect();
+        cleanupMediaElements();
+      }
+    };
+  }, [authLoading, user, sessionId]);
+
+  // Handle browser tab close or refresh
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isConnected && room) {
+        e.preventDefault();
+        e.returnValue = 'You are currently in a call. Are you sure you want to leave?';
+        return 'You are currently in a call. Are you sure you want to leave?';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [isConnected, room]);
+
+  if (authLoading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-stone-50">
-        <Loader2 className="h-10 w-10 animate-spin text-amber-500 mb-4" />
-        <p className="text-stone-700">Entering your support space...</p>
+      <div className="min-h-screen flex items-center justify-center bg-stone-50">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-amber-500" />
+          <p className="text-stone-600">Loading your call space...</p>
+        </div>
       </div>
     );
   }
 
-  if (error) {
+  if (!user) {
+    router.push('/auth');
+    return null;
+  }
+
+  if (connecting && !isConnected) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-stone-50 p-4">
-        <div className="bg-white p-6 rounded-xl shadow max-w-md w-full text-center">
-          <div className="text-red-500 mb-4">⚠️</div>
-          <p className="text-stone-800 mb-4">{error}</p>
-          <Button onClick={() => router.push('/connect')} className="w-full">
-            Back to Connect
+      <div className="min-h-screen flex items-center justify-center bg-stone-50">
+        <div className="text-center max-w-md mx-auto p-6 bg-white rounded-xl shadow-lg">
+          <div className="flex justify-center mb-4">
+            <div className="relative">
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center">
+                <Heart className="h-8 w-8 text-white animate-pulse" />
+              </div>
+              <div className="absolute inset-0 rounded-full bg-amber-400 animate-ping opacity-75"></div>
+            </div>
+          </div>
+          
+          <h2 className="text-2xl font-bold text-stone-800 mb-2">Connecting to your healing space</h2>
+          <p className="text-stone-600 mb-6">
+            {sessionInfo?.session_type === 'one_on_one' 
+              ? 'Waiting for your healing partner to join...'
+              : 'Preparing your group support circle...'}
+          </p>
+          
+          <div className="flex flex-col items-center gap-3">
+            {sessionParticipants.map((participant, index) => {
+              const profile = participant.profiles ? participant.profiles[0] : null;
+              return (
+                <div key={participant.user_id} className="flex items-center gap-3 w-full">
+                  <div className={`w-3 h-3 rounded-full ${
+                    index === 0 ? 'bg-amber-500' : 'bg-green-500'
+                  } animate-pulse`}></div>
+                  <span className="text-stone-700 font-medium">
+                    {profile?.full_name || 'Anonymous'} {participant.user_id === user.id && '(you)'}
+                  </span>
+                  <div className="ml-auto">
+                    {participant.user_id === user.id ? (
+                      <span className={`text-xs px-2 py-1 rounded-full ${
+                        isConnected ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'
+                      }`}>
+                        {isConnected ? 'Connected' : 'Connecting...'}
+                      </span>
+                    ) : (
+                      <span className="text-xs px-2 py-1 rounded-full bg-stone-100 text-stone-600">
+                        Joining soon
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          
+          {connectionError && (
+            <div className="mt-6 p-3 bg-red-50 text-red-700 rounded-lg text-sm">
+              {connectionError}
+            </div>
+          )}
+          
+          <Button
+            onClick={leaveRoom}
+            variant="outline"
+            className="mt-6 border-stone-300 text-stone-700 hover:bg-stone-100"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Leave Call
           </Button>
         </div>
       </div>
@@ -277,104 +531,280 @@ export default function CallPage() {
   }
 
   return (
-    <div className="min-h-screen bg-stone-900 text-white relative">
+    <div className="min-h-screen bg-gradient-to-b from-stone-50 to-amber-50/20">
       {/* Header */}
-      <div className="absolute top-0 left-0 right-0 z-10 p-4 flex justify-between items-center bg-black/30 backdrop-blur">
-        <div>
-          <h1 className="text-lg font-semibold">{session?.title}</h1>
-          <p className="text-xs text-stone-300 flex items-center gap-1">
-            <Users className="h-3 w-3" />
-            {remoteParticipants.length + 1} people
-          </p>
-        </div>
-        <div className="text-sm bg-amber-900/50 px-3 py-1 rounded-full">
-          {statusMessage}
-        </div>
-      </div>
-
-      {/* Main Call Area */}
-      <div className="h-screen flex items-center justify-center p-4">
-        {session?.session_type === 'one_on_one' ? (
-          <div className="relative w-full max-w-2xl aspect-video bg-black rounded-xl overflow-hidden border-2 border-amber-500/30">
-            {remoteParticipants.length > 0 ? (
-              <div
-                id={`video-${remoteParticipants[0].identity}`}
-                className="w-full h-full bg-gray-900 flex items-center justify-center"
-              >
-                <span className="text-stone-500">Waiting for video...</span>
-              </div>
-            ) : (
-              <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-stone-800 to-black">
-                <div className="text-center">
-                  <div className="text-4xl mb-2">🩹</div>
-                  <p className="text-stone-400">Waiting for the other person...</p>
+      <div className="border-b border-stone-200 bg-white/80 backdrop-blur-sm sticky top-0 z-10">
+        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => router.push('/connect')}
+              className="p-2 text-stone-600 hover:text-stone-800 hover:bg-stone-100 rounded-full"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+            <div>
+              <h1 className="text-xl font-bold text-stone-800">{sessionInfo?.title}</h1>
+              {sessionInfo?.grief_types[0] && (
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <Heart className="h-3 w-3 text-amber-500" />
+                  <span className="text-sm text-stone-600">
+                    {griefTypeLabels[sessionInfo.grief_types[0] as GriefType]}
+                  </span>
                 </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          // Group layout: grid of participants
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full max-w-6xl">
-            {remoteParticipants.map((p) => (
-              <div
-                key={p.identity}
-                className="aspect-video bg-black rounded-xl overflow-hidden relative border border-stone-700"
-              >
-                <div
-                  id={`video-${p.identity}`}
-                  className="w-full h-full flex items-center justify-center"
-                >
-                  <span className="text-stone-600 text-sm">Connecting...</span>
-                </div>
-                <div className="absolute bottom-2 left-2 bg-black/50 px-2 py-1 rounded text-xs">
-                  {p.name || p.identity}
-                </div>
-              </div>
-            ))}
-            {/* Local participant placeholder */}
-            <div className="aspect-video bg-stone-800 rounded-xl flex items-center justify-center border border-amber-500/30">
-              <span className="text-amber-400">You</span>
+              )}
             </div>
           </div>
-        )}
+          
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center px-3 py-1 rounded-full bg-green-100 text-green-800 text-sm font-medium">
+              <span className="flex h-2 w-2 rounded-full bg-green-500 mr-1.5"></span>
+              {participants.length + 1} {sessionInfo?.session_type === 'group' ? 'people' : 'people'}
+            </span>
+            
+            <Button 
+              onClick={leaveRoom}
+              variant="outline"
+              size="icon"
+              className="bg-red-500 hover:bg-red-600 text-white border-red-500"
+            >
+              <PhoneOff className="h-5 w-5" />
+            </Button>
+          </div>
+        </div>
       </div>
 
-      {/* Controls */}
-      <div className="absolute bottom-6 left-0 right-0 flex justify-center gap-4">
-        <Button
-          size="icon"
-          variant="outline"
-          onClick={toggleMic}
-          className={`rounded-full w-12 h-12 ${
-            isMicMuted ? 'bg-red-500 hover:bg-red-600' : 'bg-white hover:bg-stone-100'
-          }`}
-        >
-          {isMicMuted ? <MicOff className="h-5 w-5 text-white" /> : <Mic className="h-5 w-5 text-black" />}
-        </Button>
+      {/* Main Content */}
+      <div className="max-w-6xl mx-auto px-4 py-6">
+        {connectionError && (
+          <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-lg border border-red-200">
+            {connectionError}. Please try refreshing the page or contact support if the issue persists.
+          </div>
+        )}
 
-        <Button
-          size="icon"
-          variant="outline"
-          onClick={toggleCamera}
-          className={`rounded-full w-12 h-12 ${
-            isCameraEnabled ? 'bg-green-500 hover:bg-green-600' : 'bg-stone-700 hover:bg-stone-600'
-          }`}
-        >
-          {isCameraEnabled ? (
-            <Video className="h-5 w-5 text-white" />
-          ) : (
-            <VideoOff className="h-5 w-5 text-stone-300" />
-          )}
-        </Button>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Video Area */}
+          <div className="lg:col-span-2 space-y-4">
+            {/* Local Video */}
+            <Card className="overflow-hidden bg-stone-900 rounded-xl shadow-md">
+              <div className="relative aspect-video bg-stone-800">
+                <video
+                  ref={localVideoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute bottom-3 left-3 right-3 flex justify-between items-center">
+                  <div className="bg-black/50 backdrop-blur-sm px-3 py-1.5 rounded-full">
+                    <span className="text-white text-sm font-medium">
+                      You {isAudioMuted && '(muted)'}
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={toggleAudioMute}
+                      className={`p-2 rounded-full ${
+                        isAudioMuted ? 'bg-red-500/20 text-red-400' : 'bg-black/30 text-white hover:bg-black/40'
+                      }`}
+                    >
+                      {isAudioMuted ? (
+                        <MicOff className="h-5 w-5" />
+                      ) : (
+                        <Mic className="h-5 w-5" />
+                      )}
+                    </button>
+                    <button
+                      onClick={toggleVideoMute}
+                      className={`p-2 rounded-full ${
+                        isVideoMuted ? 'bg-red-500/20 text-red-400' : 'bg-black/30 text-white hover:bg-black/40'
+                      }`}
+                    >
+                      {isVideoMuted ? (
+                        <VideoOff className="h-5 w-5" />
+                      ) : (
+                        <Video className="h-5 w-5" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </Card>
 
-        <Button
-          size="icon"
-          variant="destructive"
-          onClick={disconnect}
-          className="rounded-full w-12 h-12 bg-red-600 hover:bg-red-700"
-        >
-          <PhoneOff className="h-5 w-5 text-white" />
-        </Button>
+            {/* Remote Videos */}
+            {participants.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {participants.map((participant) => {
+                  const participantData = sessionParticipants.find(p => p.user_id === participant.identity);
+                  const profile = participantData?.profiles ? participantData.profiles[0] : null;
+                  return (
+                    <Card key={participant.identity} className="overflow-hidden bg-stone-900 rounded-xl shadow-md">
+                      <div className="relative aspect-video bg-stone-800">
+                        <div 
+                          id={`remote-video-${participant.identity}`}
+                          className="w-full h-full"
+                        />
+                        <div className="absolute bottom-3 left-3 bg-black/50 backdrop-blur-sm px-3 py-1.5 rounded-full">
+                          <span className="text-white text-sm font-medium">
+                            {profile?.full_name || participant.name || 'Anonymous'}
+                          </span>
+                        </div>
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            ) : (
+              <Card className="bg-white border-2 border-dashed border-amber-300 rounded-xl p-8 text-center">
+                <div className="flex flex-col items-center justify-center h-64">
+                  {sessionInfo?.session_type === 'one_on_one' ? (
+                    <>
+                      <div className="relative mb-6">
+                        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center">
+                          <Users className="h-8 w-8 text-white" />
+                        </div>
+                        <div className="absolute inset-0 rounded-full bg-amber-400 animate-ping opacity-75"></div>
+                      </div>
+                      <h3 className="text-xl font-semibold text-stone-800 mb-2">Waiting for your support partner</h3>
+                      <p className="text-stone-600">They'll join you shortly. This is a safe space for healing.</p>
+                    </>
+                  ) : (
+                    <>
+                      <div className="relative mb-6">
+                        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center">
+                          <Users className="h-8 w-8 text-white" />
+                        </div>
+                        <div className="absolute inset-0 rounded-full bg-amber-400 animate-ping opacity-75"></div>
+                      </div>
+                      <h3 className="text-xl font-semibold text-stone-800 mb-2">Your support circle is forming</h3>
+                      <p className="text-stone-600">More people will join soon. Thank you for being here.</p>
+                    </>
+                  )}
+                </div>
+              </Card>
+            )}
+          </div>
+
+          {/* Sidebar - Participants & Chat */}
+          <div className="space-y-6">
+            {/* Participants List */}
+            <Card className="p-4 bg-white">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-stone-800 flex items-center gap-2">
+                  <Users className="h-4 w-4 text-amber-500" />
+                  Participants
+                </h3>
+                <span className="text-xs px-2 py-1 bg-amber-100 text-amber-800 rounded-full">
+                  {participants.length + 1} / {sessionInfo?.session_type === 'one_on_one' ? 2 : 8}
+                </span>
+              </div>
+              
+              <div className="space-y-3">
+                {/* Current User */}
+                <div className="flex items-center gap-3 p-2 bg-amber-50 rounded-lg">
+                  <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                  <span className="font-medium text-stone-800 flex-1">You</span>
+                  <span className="text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full">
+                    Host
+                  </span>
+                </div>
+                
+                {/* Remote Participants */}
+                {participants.map((participant) => {
+                  const participantData = sessionParticipants.find(p => p.user_id === participant.identity);
+                  const profile = participantData?.profiles ? participantData.profiles[0] : null;
+                  return (
+                    <div key={participant.identity} className="flex items-center gap-3 p-2 hover:bg-stone-50 rounded-lg transition-colors">
+                      <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                      <span className="text-stone-700 flex-1">
+                        {profile?.full_name || participant.name || 'Anonymous'}
+                      </span>
+                      {participant.identity === sessionInfo?.host_id && (
+                        <span className="text-xs px-2 py-1 bg-amber-100 text-amber-800 rounded-full">
+                          Host
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+
+            {/* Chat Section */}
+            <Card className="p-4 bg-white h-[300px] flex flex-col">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-stone-800 flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4 text-amber-500" />
+                  Support Chat
+                </h3>
+              </div>
+              
+              <div className="flex-1 overflow-y-auto mb-4 bg-stone-50 rounded-lg p-3 min-h-[200px]">
+                <div className="text-center text-stone-500 text-sm py-8">
+                  <div className="mb-4 flex justify-center">
+                    <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
+                      <MessageSquare className="h-6 w-6 text-amber-500" />
+                    </div>
+                  </div>
+                  <p>Share thoughts and resources here</p>
+                  <p className="text-xs mt-1 text-stone-400">Messages are not saved after the call ends</p>
+                </div>
+              </div>
+              
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Type a message..."
+                  className="flex-1 px-3 py-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                  disabled
+                />
+                <Button 
+                  disabled
+                  className="bg-amber-500 hover:bg-amber-600 text-white"
+                >
+                  Send
+                </Button>
+              </div>
+            </Card>
+
+            {/* Call Guidelines */}
+            <Card className="p-4 bg-white">
+              <h3 className="font-semibold text-stone-800 mb-3 flex items-center gap-2">
+                <Heart className="h-4 w-4 text-amber-500" />
+                This is a safe space
+              </h3>
+              
+              <ul className="space-y-2 text-sm text-stone-600">
+                <li className="flex items-start gap-2">
+                  <span className="mt-1">•</span>
+                  <span>Listen with compassion, speak from the heart</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="mt-1">•</span>
+                  <span>What's shared here stays here</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="mt-1">•</span>
+                  <span>You can step away anytime if needed</span>
+                </li>
+              </ul>
+              
+              <div className="mt-4 pt-4 border-t border-stone-200 flex items-center justify-between">
+                <span className="text-xs text-stone-500 flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  Session started {sessionInfo?.created_at ? new Date(sessionInfo.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'just now'}
+                </span>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={leaveRoom}
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-300"
+                >
+                  End Call
+                </Button>
+              </div>
+            </Card>
+          </div>
+        </div>
       </div>
     </div>
   );
