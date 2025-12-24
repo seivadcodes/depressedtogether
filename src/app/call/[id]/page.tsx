@@ -5,7 +5,16 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
-import { Room, RemoteParticipant, LocalParticipant, Track, RemoteTrackPublication, RemoteTrack } from 'livekit-client';
+import { 
+  Room, 
+  RemoteParticipant, 
+  LocalParticipant, 
+  Track, 
+  RemoteTrackPublication, 
+  RemoteTrack,
+  LocalTrack,
+  DataPacket_Kind
+} from 'livekit-client';
 import { 
   PhoneOff, 
   Mic, 
@@ -17,7 +26,8 @@ import {
   Loader2,
   ArrowLeft,
   Heart,
-  Clock
+  Clock,
+  Send
 } from 'lucide-react';
 import Button from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -55,6 +65,14 @@ interface SessionParticipant {
   profiles: Profile[] | null;
 }
 
+interface ChatMessage {
+  id: string;
+  sender_id: string;
+  sender_name: string;
+  content: string;
+  timestamp: Date;
+}
+
 export default function CallPage() {
   const params = useParams();
   const sessionId = params.id as string;
@@ -73,6 +91,11 @@ export default function CallPage() {
   const [connecting, setConnecting] = useState(true);
   const [sessionInfo, setSessionInfo] = useState<Session | null>(null);
   const [sessionParticipants, setSessionParticipants] = useState<SessionParticipant[]>([]);
+
+  // Chat state
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [newMessage, setNewMessage] = useState('');
+  const chatContainerRef = useRef<HTMLDivElement>(null);
 
   // Refs for media elements
   const localVideoRef = useRef<HTMLVideoElement>(null);
@@ -197,7 +220,13 @@ export default function CallPage() {
         dynacast: true,
         videoCaptureDefaults: {
           resolution: { width: 1280, height: 720 }
-        }
+        },
+        publishDefaults: {
+          videoEncoding: {
+            maxBitrate: 1_500_000,
+            maxFramerate: 24,
+          },
+        },
       });
 
       // Setup event listeners before connecting
@@ -212,16 +241,27 @@ export default function CallPage() {
       
       // Set up local video
       if (localVideoRef.current) {
-        const videoTrack = await localParticipant.createTracks({
-          video: { resolution: { width: 1280, height: 720 } }
+        // Get camera permissions first
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: true, 
+          audio: true 
         });
         
-        if (videoTrack[0]) {
-          videoTrack[0].attach(localVideoRef.current);
-        }
+        // Stop any existing tracks
+        stream.getTracks().forEach(track => track.stop());
         
-        await localParticipant.setMicrophoneEnabled(true);
-        await localParticipant.setCameraEnabled(true);
+        // Create tracks with proper permissions
+        const tracks = await localParticipant.createTracks({
+          video: true,
+          audio: true,
+        });
+        
+        tracks.forEach(track => {
+          if (track.kind === 'video' && localVideoRef.current) {
+            track.attach(localVideoRef.current);
+          }
+          localParticipant.publishTrack(track);
+        });
         
         // Set initial mute states
         setIsAudioMuted(false);
@@ -250,6 +290,14 @@ export default function CallPage() {
       console.error('Error connecting to LiveKit room:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to connect to the call';
       setConnectionError(errorMessage);
+      
+      // Check for specific permission errors
+      if (error instanceof Error && (
+        error.message.includes('NotAllowedError') || 
+        error.message.includes('Permission denied')
+      )) {
+        setConnectionError('Please allow camera and microphone permissions to join the call.');
+      }
     } finally {
       setConnecting(false);
     }
@@ -266,6 +314,14 @@ export default function CallPage() {
           return [...prev, participant];
         }
         return prev;
+      });
+      
+      // Subscribe to all tracks immediately
+      participant.trackPublications.forEach((publication: RemoteTrackPublication) => {
+        if (publication.track) {
+          // No need to set subscription permissions in newer LiveKit versions
+          // as tracks are auto-subscribed by default
+        }
       });
     });
 
@@ -293,6 +349,14 @@ export default function CallPage() {
       }
 
       setParticipants(prev => prev.filter(p => p.identity !== participant.identity));
+      
+      // Add system message to chat
+      addSystemMessage(`${participant.name || 'Someone'} has left the call`);
+    });
+
+    // Track published
+    room.on('trackPublished', (publication: RemoteTrackPublication, participant: RemoteParticipant) => {
+      console.log(`Track published by ${participant.identity}: ${publication.kind}`);
     });
 
     // Track subscribed (audio or video)
@@ -324,7 +388,31 @@ export default function CallPage() {
 
     // Track unsubscribed
     room.on('trackUnsubscribed', (track: RemoteTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
+      console.log(`Track unsubscribed from ${participant.identity}: ${track.kind}`);
       track.detach();
+    });
+
+    // Data received (chat messages)
+    room.on('dataReceived', (payload: Uint8Array, participant?: RemoteParticipant) => {
+      try {
+        const message = new TextDecoder().decode(payload);
+        const data = JSON.parse(message);
+        
+        if (data.type === 'chat') {
+          const sender = participant || room.localParticipant;
+          const senderName = participant ? participant.name : 'You';
+          
+          addChatMessage({
+            id: Date.now().toString(),
+            sender_id: sender.identity,
+            sender_name: senderName || 'Anonymous',
+            content: data.content,
+            timestamp: new Date()
+          });
+        }
+      } catch (error) {
+        console.error('Error parsing data message:', error);
+      }
     });
 
     // Room disconnected
@@ -341,54 +429,176 @@ export default function CallPage() {
     
     try {
       const newState = !isAudioMuted;
-      await localParticipant.setMicrophoneEnabled(!newState);
+      
+      // Get audio tracks
+      const audioTrackPublication = Array.from(localParticipant.audioTrackPublications.values())[0];
+      
+      if (audioTrackPublication && audioTrackPublication.track) {
+        // Unpublish existing track
+        await localParticipant.unpublishTrack(audioTrackPublication.track);
+      }
+      
+      if (!newState) {
+        // Create new audio track if unmuting
+        const tracks = await localParticipant.createTracks({ audio: true });
+        if (tracks.length > 0 && tracks[0]) {
+          await localParticipant.publishTrack(tracks[0]);
+        }
+      }
+      
       setIsAudioMuted(newState);
       console.log(newState ? 'Microphone muted' : 'Microphone unmuted');
     } catch (error) {
       console.error('Error toggling microphone:', error);
+      setConnectionError('Failed to toggle microphone. Please check permissions.');
     }
   };
 
   // Toggle video mute
   const toggleVideoMute = async () => {
-    if (!room || !localParticipant) return;
+    if (!room || !localParticipant || !localVideoRef.current) return;
     
     try {
       const newState = !isVideoMuted;
-      await localParticipant.setCameraEnabled(!newState);
+      
+      // Get video tracks
+      const videoTrackPublication = Array.from(localParticipant.videoTrackPublications.values())[0];
+      
+      if (videoTrackPublication && videoTrackPublication.track) {
+        // Unpublish existing track
+        await localParticipant.unpublishTrack(videoTrackPublication.track);
+      }
+      
+      if (!newState) {
+        // Create new video track if unmuting
+        const tracks = await localParticipant.createTracks({ 
+          video: { resolution: { width: 1280, height: 720 } }
+        });
+        
+        if (tracks.length > 0 && tracks[0].kind === 'video') {
+          tracks[0].attach(localVideoRef.current);
+          await localParticipant.publishTrack(tracks[0]);
+        }
+      } else {
+        // Show placeholder when video is muted
+        localVideoRef.current.srcObject = null;
+        // Optionally show a placeholder image
+        localVideoRef.current.style.backgroundColor = '#1f2937';
+      }
+      
       setIsVideoMuted(newState);
       console.log(newState ? 'Camera disabled' : 'Camera enabled');
     } catch (error) {
       console.error('Error toggling camera:', error);
+      setConnectionError('Failed to toggle camera. Please check permissions.');
     }
   };
 
-  // Leave the room
-  const leaveRoom = async () => {
-    if (room) {
-      room.disconnect();
-      cleanupMediaElements();
-      setIsConnected(false);
-      
-      // Update session status if this was the last participant
-      if (sessionInfo?.status === 'active') {
-        const { count } = await supabase
-          .from('session_participants')
-          .select('*', { count: 'exact', head: true })
-          .eq('session_id', sessionId);
-        
-        if (count !== null && count <= 1) { // Only this user remaining
-          await supabase
-            .from('sessions')
-            .update({ status: 'ended' })
-            .eq('id', sessionId);
-        }
+  // Add chat message
+  const addChatMessage = (message: ChatMessage) => {
+    setChatMessages(prev => [...prev, message]);
+  };
+
+  // Add system message
+  const addSystemMessage = (content: string) => {
+    addChatMessage({
+      id: `system-${Date.now()}`,
+      sender_id: 'system',
+      sender_name: 'System',
+      content,
+      timestamp: new Date()
+    });
+  };
+
+ // Send chat message
+const sendChatMessage = async () => {
+  if (!room || !newMessage.trim() || !user) return;
+
+  try {
+    const message = {
+      type: 'chat',
+      content: newMessage.trim(),
+      timestamp: new Date().toISOString()
+    };
+
+    // Send via data channel - CORRECTED PARAMETER FORMAT
+    await room.localParticipant.publishData(
+      new TextEncoder().encode(JSON.stringify(message)),
+      { reliable: true }
+    );
+
+    // Add to local chat immediately
+    addChatMessage({
+      id: Date.now().toString(),
+      sender_id: user.id,
+      sender_name: 'You',
+      content: newMessage.trim(),
+      timestamp: new Date()
+    });
+
+    setNewMessage('');
+    
+    // Scroll to bottom
+    setTimeout(() => {
+      if (chatContainerRef.current) {
+        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
       }
-      
-      router.push('/connect');
-    }
-  };
+    }, 100);
+  } catch (error) {
+    console.error('Error sending chat message:', error);
+    setConnectionError('Failed to send message. Please try again.');
+  }
+};
 
+ // Leave the room
+const leaveRoom = async () => {
+  if (room) {
+    // Send goodbye message - CORRECTED PARAMETER FORMAT
+    try {
+      const goodbyeMessage = {
+        type: 'chat',
+        content: 'has left the call',
+        timestamp: new Date().toISOString()
+      };
+
+      await room.localParticipant.publishData(
+        new TextEncoder().encode(JSON.stringify(goodbyeMessage)),
+        { reliable: true }
+      );
+    } catch (error) {
+      console.error('Error sending goodbye message:', error);
+    }
+    
+    room.disconnect();
+    cleanupMediaElements();
+    setIsConnected(false);
+    
+    // Update session status if this was the last participant
+    if (sessionInfo?.status === 'active') {
+      const { count } = await supabase
+        .from('session_participants')
+        .select('*', { count: 'exact', head: true })
+        .eq('session_id', sessionId);
+      
+      if (count !== null && count <= 1) { // Only this user remaining
+        await supabase
+          .from('sessions')
+          .update({ status: 'ended' })
+          .eq('id', sessionId);
+      }
+    }
+    
+    router.push('/connect');
+  }
+};
+
+// Handle chat input key press
+const handleChatKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendChatMessage();
+  }
+};
   // Initialize - fetch session details and connect
   useEffect(() => {
     if (authLoading || !user) return;
@@ -397,6 +607,11 @@ export default function CallPage() {
       const sessionData = await fetchSessionDetails();
       if (sessionData) {
         await connectToRoom();
+        
+        // Add welcome message
+        setTimeout(() => {
+          addSystemMessage('Welcome to your healing space. This is a safe place to share and be heard.');
+        }, 1000);
       }
     };
 
@@ -446,6 +661,13 @@ export default function CallPage() {
     };
   }, [isConnected, room]);
 
+  // Auto-scroll chat
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [chatMessages]);
+
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-stone-50">
@@ -481,6 +703,17 @@ export default function CallPage() {
               ? 'Waiting for your healing partner to join...'
               : 'Preparing your group support circle...'}
           </p>
+          
+          <div className="text-center mb-6">
+            <p className="text-sm text-stone-500 mb-2">Please allow camera and microphone permissions when prompted</p>
+            <div className="inline-flex items-center gap-2 bg-amber-100 text-amber-800 text-sm px-3 py-1 rounded-full">
+              <Mic className="h-3 w-3" />
+              <span>Microphone</span>
+              <span className="mx-1">•</span>
+              <Video className="h-3 w-3" />
+              <span>Camera</span>
+            </div>
+          </div>
           
           <div className="flex flex-col items-center gap-3">
             {sessionParticipants.map((participant, index) => {
@@ -558,7 +791,7 @@ export default function CallPage() {
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center px-3 py-1 rounded-full bg-green-100 text-green-800 text-sm font-medium">
               <span className="flex h-2 w-2 rounded-full bg-green-500 mr-1.5"></span>
-              {participants.length + 1} {sessionInfo?.session_type === 'group' ? 'people' : 'people'}
+              {participants.length + 1} {sessionInfo?.session_type === 'group' ? 'people' : 'person'}
             </span>
             
             <Button 
@@ -606,6 +839,7 @@ export default function CallPage() {
                       className={`p-2 rounded-full ${
                         isAudioMuted ? 'bg-red-500/20 text-red-400' : 'bg-black/30 text-white hover:bg-black/40'
                       }`}
+                      title={isAudioMuted ? 'Unmute microphone' : 'Mute microphone'}
                     >
                       {isAudioMuted ? (
                         <MicOff className="h-5 w-5" />
@@ -618,6 +852,7 @@ export default function CallPage() {
                       className={`p-2 rounded-full ${
                         isVideoMuted ? 'bg-red-500/20 text-red-400' : 'bg-black/30 text-white hover:bg-black/40'
                       }`}
+                      title={isVideoMuted ? 'Enable camera' : 'Disable camera'}
                     >
                       {isVideoMuted ? (
                         <VideoOff className="h-5 w-5" />
@@ -634,6 +869,8 @@ export default function CallPage() {
             {participants.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {participants.map((participant) => {
+                  if (participant.identity === user?.id) return null; // Skip local participant
+                  
                   const participantData = sessionParticipants.find(p => p.user_id === participant.identity);
                   const profile = participantData?.profiles ? participantData.profiles[0] : null;
                   return (
@@ -641,6 +878,21 @@ export default function CallPage() {
                       <div className="relative aspect-video bg-stone-800">
                         <div 
                           id={`remote-video-${participant.identity}`}
+                          ref={el => {
+                            if (el) {
+                              // Clear existing content
+                              el.innerHTML = '';
+                              // Create and attach video element
+                              const videoEl = document.createElement('video');
+                              videoEl.autoplay = true;
+                              videoEl.playsInline = true;
+                              videoEl.className = 'w-full h-full object-cover';
+                              el.appendChild(videoEl);
+                              
+                              // Store reference
+                              remoteVideoRefs.current.set(participant.identity, videoEl);
+                            }
+                          }}
                           className="w-full h-full"
                         />
                         <div className="absolute bottom-3 left-3 bg-black/50 backdrop-blur-sm px-3 py-1.5 rounded-full">
@@ -703,13 +955,17 @@ export default function CallPage() {
                 <div className="flex items-center gap-3 p-2 bg-amber-50 rounded-lg">
                   <div className="w-2 h-2 rounded-full bg-green-500"></div>
                   <span className="font-medium text-stone-800 flex-1">You</span>
-                  <span className="text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full">
-                    Host
-                  </span>
+                  {isAudioMuted && (
+                    <span className="text-xs px-2 py-1 bg-red-100 text-red-800 rounded-full">
+                      Muted
+                    </span>
+                  )}
                 </div>
                 
                 {/* Remote Participants */}
                 {participants.map((participant) => {
+                  if (participant.identity === user?.id) return null;
+                  
                   const participantData = sessionParticipants.find(p => p.user_id === participant.identity);
                   const profile = participantData?.profiles ? participantData.profiles[0] : null;
                   return (
@@ -738,30 +994,67 @@ export default function CallPage() {
                 </h3>
               </div>
               
-              <div className="flex-1 overflow-y-auto mb-4 bg-stone-50 rounded-lg p-3 min-h-[200px]">
-                <div className="text-center text-stone-500 text-sm py-8">
-                  <div className="mb-4 flex justify-center">
-                    <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
-                      <MessageSquare className="h-6 w-6 text-amber-500" />
+              <div 
+                ref={chatContainerRef}
+                className="flex-1 overflow-y-auto mb-4 bg-stone-50 rounded-lg p-3 min-h-[200px] space-y-3"
+              >
+                {chatMessages.length === 0 ? (
+                  <div className="text-center text-stone-500 text-sm py-8">
+                    <div className="mb-4 flex justify-center">
+                      <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
+                        <MessageSquare className="h-6 w-6 text-amber-500" />
+                      </div>
                     </div>
+                    <p>Share thoughts and resources here</p>
+                    <p className="text-xs mt-1 text-stone-400">Messages are not saved after the call ends</p>
                   </div>
-                  <p>Share thoughts and resources here</p>
-                  <p className="text-xs mt-1 text-stone-400">Messages are not saved after the call ends</p>
-                </div>
+                ) : (
+                  chatMessages.map((message) => (
+                    <div 
+                      key={message.id} 
+                      className={`flex ${message.sender_id === 'system' ? 'justify-center' : message.sender_id === user?.id ? 'justify-end' : 'justify-start'}`}
+                    >
+                      <div className={`max-w-[80%] rounded-lg p-3 ${
+                        message.sender_id === 'system' 
+                          ? 'bg-stone-200 text-stone-700 text-center text-xs'
+                          : message.sender_id === user?.id
+                          ? 'bg-amber-500 text-white rounded-br-none'
+                          : 'bg-stone-100 text-stone-800 rounded-bl-none'
+                      }`}>
+                        {message.sender_id !== 'system' && (
+                          <div className={`text-xs font-medium mb-1 ${
+                            message.sender_id === user?.id ? 'text-amber-100' : 'text-amber-700'
+                          }`}>
+                            {message.sender_name}
+                          </div>
+                        )}
+                        <div className="text-sm">{message.content}</div>
+                        <div className={`text-xs mt-1 ${
+                          message.sender_id === 'system' ? 'text-stone-500' : 'text-white/80'
+                        }`}>
+                          {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
               
               <div className="flex gap-2">
                 <input
                   type="text"
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  onKeyPress={handleChatKeyPress}
                   placeholder="Type a message..."
                   className="flex-1 px-3 py-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
-                  disabled
                 />
                 <Button 
-                  disabled
+                  onClick={sendChatMessage}
+                  disabled={!newMessage.trim()}
                   className="bg-amber-500 hover:bg-amber-600 text-white"
                 >
-                  Send
+                  <Send className="h-4 w-4" />
                 </Button>
               </div>
             </Card>

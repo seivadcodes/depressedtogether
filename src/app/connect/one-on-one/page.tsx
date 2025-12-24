@@ -13,6 +13,9 @@ import Button from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Copy, PhoneCall, MicOff, Mic } from 'lucide-react';
 
+// ⚠️ Prevent static prerendering – this page uses browser-only APIs (window, navigator, WebRTC)
+export const dynamic = 'force-client';
+
 export default function OneOnOneCall() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -46,7 +49,9 @@ export default function OneOnOneCall() {
     const newRoomId = generateRoomId();
     setRoomId(newRoomId);
     joinRoom(newRoomId);
-    router.push(`/connect/one-on-one?room=${newRoomId}`);
+    if (typeof window !== 'undefined') {
+      router.push(`/connect/one-on-one?room=${newRoomId}`);
+    }
   };
 
   const joinRoom = async (roomName: string) => {
@@ -108,6 +113,9 @@ export default function OneOnOneCall() {
       roomRef.current.disconnect();
       roomRef.current = null;
     }
+    if (audioTrackRef.current) {
+      audioTrackRef.current.stop(); // Clean up media stream
+    }
     audioTrackRef.current = null;
     setIsConnected(false);
   };
@@ -125,11 +133,10 @@ export default function OneOnOneCall() {
   };
 
   const copyLink = () => {
-    if (roomId) {
-      navigator.clipboard.writeText(
-        `${window.location.origin}/connect/one-on-one?room=${roomId}`
-      );
-    }
+    if (typeof window === 'undefined' || !roomId) return;
+    navigator.clipboard
+      .writeText(`${window.location.origin}/connect/one-on-one?room=${roomId}`)
+      .catch((err) => console.error('Failed to copy link:', err));
   };
 
   // === Connected View ===
@@ -187,7 +194,7 @@ export default function OneOnOneCall() {
         <CardContent className="space-y-6">
           {error && <p className="text-destructive text-center">{error}</p>}
 
-          {roomId ? (
+          {roomId && typeof window !== 'undefined' ? (
             <div className="text-center space-y-4">
               <p className="text-muted-foreground">
                 Share this link with someone to join your call:
