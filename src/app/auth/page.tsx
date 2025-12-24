@@ -1,20 +1,18 @@
-// src/app/auth/page.tsx
 'use client';
 
 import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
 
 export default function AuthPage() {
   const { signUp, signIn, loading: authLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const mode = searchParams.get('mode') || 'signin'; // 'signin' or 'signup'
+  const mode = searchParams.get('mode') || 'signin';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState(''); // only used for signup
+  const [fullName, setFullName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -27,17 +25,16 @@ export default function AuthPage() {
 
     try {
       if (isSignUp) {
+        // ✅ Correct Supabase v2+ format: single object
         await signUp(email, password, {
-          data: { full_name: fullName.trim() || null },
+          data: { full_name: fullName.trim() || null }
         });
       } else {
         await signIn(email, password);
       }
 
-      // Redirect after success
-      router.push('/community'); // or /dashboard, /profile, etc.
+      router.push('/community');
     } catch (err: any) {
-      console.error(err);
       setError(err.message || 'Something went wrong. Please try again.');
     } finally {
       setLoading(false);
@@ -45,17 +42,21 @@ export default function AuthPage() {
   };
 
   if (authLoading) {
-    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+    return (
+      <div style={styles.centered}>
+        Loading...
+      </div>
+    );
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-4">
-      <div className="w-full max-w-md bg-white rounded-lg shadow-md p-6 space-y-6">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-800">
+    <div style={styles.centered}>
+      <div style={styles.card}>
+        <div style={styles.header}>
+          <h1 style={styles.title}>
             {isSignUp ? 'Create an Account' : 'Welcome Back'}
           </h1>
-          <p className="text-gray-600 mt-2">
+          <p style={styles.subtitle}>
             {isSignUp
               ? 'Join our community of support'
               : 'Sign in to connect with others'}
@@ -63,15 +64,15 @@ export default function AuthPage() {
         </div>
 
         {error && (
-          <div className="bg-red-50 text-red-700 p-3 rounded-md text-sm">
+          <div style={styles.errorBox}>
             {error}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} style={styles.form}>
           {isSignUp && (
             <div>
-              <label htmlFor="fullName" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="fullName" style={styles.label}>
                 Full Name
               </label>
               <input
@@ -79,14 +80,14 @@ export default function AuthPage() {
                 type="text"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                style={styles.input}
                 required
               />
             </div>
           )}
 
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="email" style={styles.label}>
               Email
             </label>
             <input
@@ -94,13 +95,13 @@ export default function AuthPage() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+              style={styles.input}
               required
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="password" style={styles.label}>
               Password
             </label>
             <input
@@ -108,7 +109,7 @@ export default function AuthPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+              style={styles.input}
               minLength={6}
               required
             />
@@ -117,28 +118,134 @@ export default function AuthPage() {
           <button
             type="submit"
             disabled={loading}
-            className={`w-full py-2 px-4 rounded-md text-white font-medium ${
-              loading ? 'bg-indigo-400' : 'bg-indigo-600 hover:bg-indigo-700'
-            } transition focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2`}
+            style={{
+              ...styles.button,
+              backgroundColor: loading ? '#d19a00' : '#f59e0b',
+              cursor: loading ? 'not-allowed' : 'pointer'
+            }}
           >
             {loading ? 'Please wait...' : isSignUp ? 'Create Account' : 'Sign In'}
           </button>
         </form>
 
-        <div className="text-center text-sm text-gray-600">
+        <div style={styles.toggle}>
           {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
-          <Link
+          <a
             href={isSignUp ? '/auth?mode=signin' : '/auth?mode=signup'}
-            className="text-indigo-600 hover:underline font-medium"
+            style={styles.toggleLink}
           >
             {isSignUp ? 'Sign in' : 'Sign up'}
-          </Link>
+          </a>
         </div>
 
-        <div className="text-center text-xs text-gray-500 mt-4">
+        <div style={styles.footer}>
           You’re never alone. This space is here for you.
         </div>
       </div>
     </div>
   );
 }
+
+// 👇 All styles in one clean object
+const styles = {
+  centered: {
+    minHeight: '100vh',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fafafa',
+    padding: '20px',
+    fontFamily: 'Segoe UI, system-ui, sans-serif'
+  } as React.CSSProperties,
+
+  card: {
+    width: '100%',
+    maxWidth: '400px',
+    backgroundColor: 'white',
+    borderRadius: '12px',
+    boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+    padding: '32px'
+  } as React.CSSProperties,
+
+  header: {
+    textAlign: 'center' as const,
+    marginBottom: '24px'
+  },
+
+  title: {
+    fontSize: '24px',
+    fontWeight: 'bold' as const,
+    color: '#1f2937',
+    margin: 0
+  },
+
+  subtitle: {
+    color: '#6b7280',
+    marginTop: '8px',
+    fontSize: '14px'
+  },
+
+  errorBox: {
+    backgroundColor: '#fee2e2',
+    color: '#dc2626',
+    padding: '12px',
+    borderRadius: '8px',
+    marginBottom: '16px',
+    fontSize: '14px'
+  },
+
+  form: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '16px'
+  },
+
+  label: {
+    display: 'block',
+    fontSize: '14px',
+    fontWeight: '500' as const,
+    color: '#374151',
+    marginBottom: '6px'
+  },
+
+  input: {
+    width: '100%',
+    padding: '12px',
+    border: '1px solid #d1d5db',
+    borderRadius: '8px',
+    fontSize: '16px'
+  },
+
+  button: {
+    width: '100%',
+    padding: '12px',
+    backgroundColor: '#f59e0b',
+    color: 'white',
+    border: 'none',
+    borderRadius: '8px',
+    fontSize: '16px',
+    fontWeight: '600' as const
+  },
+
+  toggle: {
+    textAlign: 'center' as const,
+    marginTop: '24px',
+    fontSize: '14px',
+    color: '#6b7280'
+  },
+
+  toggleLink: {
+    color: '#f59e0b',
+    textDecoration: 'underline',
+    fontWeight: '600' as const,
+    cursor: 'pointer'
+  },
+
+  footer: {
+    textAlign: 'center' as const,
+    marginTop: '16px',
+    fontSize: '12px',
+    color: '#9ca3af',
+    fontStyle: 'italic' as const
+  }
+};

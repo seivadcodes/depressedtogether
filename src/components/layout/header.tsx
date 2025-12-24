@@ -3,27 +3,55 @@
 import Link from 'next/link';
 import { Home, User, LogOut } from 'lucide-react';
 import { usePathname } from 'next/navigation';
-import { useClientAuth } from '@/hooks/useClientAuth';
-import { useState } from 'react';
+import { useAuth } from '@/hooks/useAuth'; // ✅ your hook
+import { useState, useEffect } from 'react';
 
 export default function Header() {
   const pathname = usePathname();
-  const { user, logout: handleLogout } = useClientAuth();
+  const { user, loading, signOut } = useAuth(); // ✅ from your system
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [initials, setInitials] = useState('U');
 
-  const logout = () => {
-    handleLogout();
+  // Compute initials when user loads
+  useEffect(() => {
+    if (user) {
+      let name = '';
+
+      // Try to get name from user metadata (set during sign-up)
+      if (user.user_metadata?.full_name) {
+        name = user.user_metadata.full_name;
+      } else if (user.email) {
+        // Fallback to email prefix
+        name = user.email.split('@')[0];
+      }
+
+      const computedInitials = name
+        .split(' ')
+        .map((n) => n[0]?.toUpperCase() || '')
+        .join('')
+        .substring(0, 2) || 'U';
+
+      setInitials(computedInitials);
+    } else {
+      setInitials('U');
+    }
+  }, [user]);
+
+  const handleLogout = async () => {
+    await signOut();
     setIsMenuOpen(false);
   };
 
-  const initials = user
-    ? user.name
-        .split(' ')
-        .map((n: string) => n[0]) // ✅ Fixed implicit any
-        .join('')
-        .toUpperCase()
-        .substring(0, 2)
-    : 'U';
+  // Don’t render sign-in or menu while loading
+  if (loading) {
+    return (
+      <header className="fixed top-0 left-0 right-0 z-50 bg-amber-50/90 backdrop-blur-sm border-b border-stone-200 shadow-sm">
+        <div className="max-w-2xl mx-auto px-4 py-3">
+          <div className="h-6 w-32 bg-stone-200 rounded animate-pulse"></div>
+        </div>
+      </header>
+    );
+  }
 
   return (
     <>
@@ -58,7 +86,7 @@ export default function Header() {
                     Dashboard
                   </Link>
                   <button
-                    onClick={logout}
+                    onClick={handleLogout}
                     className="w-full text-left px-4 py-2 text-sm text-stone-700 hover:bg-stone-100 flex items-center gap-2"
                   >
                     <LogOut size={16} />
