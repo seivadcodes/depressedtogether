@@ -104,8 +104,8 @@ if (!user) {
   router.push('/auth');
   return null;
 }
- 
 
+// ✅ Only ONE useEffect for fetching profile
 useEffect(() => {
   if (!user) return; // user guaranteed non-null due to guard, but safe
 
