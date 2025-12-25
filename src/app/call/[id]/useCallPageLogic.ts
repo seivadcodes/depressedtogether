@@ -1,4 +1,3 @@
-// src/app/call/[id]/useCallPageLogic.ts
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -21,7 +20,6 @@ export function useCallPageLogic(sessionId: string) {
   const { user, loading: authLoading } = useAuth();
   
   // LiveKit state
-  const [room, setRoom] = useState<Room | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isAudioMuted, setIsAudioMuted] = useState(false);
   const [isVideoMuted, setIsVideoMuted] = useState(false);
@@ -31,23 +29,30 @@ export function useCallPageLogic(sessionId: string) {
   const [connecting, setConnecting] = useState(true);
   const [sessionInfo, setSessionInfo] = useState<any | null>(null);
   const [sessionParticipants, setSessionParticipants] = useState<any[]>([]);
-  const [callMode, setCallMode] = useState<'audio' | 'video'>('audio'); // New state for mode
+  const [callMode, setCallMode] = useState<'audio' | 'video'>('audio');
+
+  // CRITICAL FIX 1: Use ref for room instance instead of state
+  const roomRef = useRef<Room | null>(null);
 
   // Chat state
   const [chatMessages, setChatMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
-  // Refs for media elements
+  // Media refs
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
   const remoteAudioRefs = useRef<Map<string, HTMLAudioElement>>(new Map());
+
+  // CRITICAL FIX 2: Add connection guard state
+  const [isInitializing, setIsInitializing] = useState(false);
 
   // Cleanup function for media elements
   const cleanupMediaElements = () => {
     // Cleanup local video
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = null;
+      localVideoRef.current.style.backgroundColor = '#1f2937';
     }
 
     // Cleanup remote videos
@@ -72,7 +77,7 @@ export function useCallPageLogic(sessionId: string) {
     if (!sessionId || !user) return;
 
     try {
-      // Get session info (include mode if exists, fallback to 'audio')
+      // Get session info
       const { data: sessionData, error: sessionError } = await supabase
         .from('sessions')
         .select('status, mode')
@@ -113,14 +118,20 @@ export function useCallPageLogic(sessionId: string) {
 
   // Connect to LiveKit room
   const connectToRoom = async () => {
-    if (!sessionId || !user) {
-      setConnectionError('Missing session ID or user information');
+    // CRITICAL FIX 3: Prevent multiple connection attempts
+    if (isConnected || connecting || isInitializing) {
+      console.log('Connection attempt blocked - already connecting/connected');
       return;
     }
+    
+    setIsInitializing(true);
+    setConnecting(true);
+    setConnectionError(null);
 
     try {
-      setConnecting(true);
-      setConnectionError(null);
+      if (!sessionId || !user) {
+        throw new Error('Missing session ID or user information');
+      }
 
       // Get LiveKit token
       const response = await fetch('/api/livekit/token', {
@@ -145,6 +156,13 @@ export function useCallPageLogic(sessionId: string) {
         throw new Error('Missing token or LiveKit URL in response');
       }
 
+      // CRITICAL FIX 4: Proper cleanup before new connection
+      if (roomRef.current) {
+        console.log('Cleaning up previous room connection');
+        roomRef.current.disconnect();
+        cleanupMediaElements();
+      }
+
       // Create and connect to room
       const newRoom = new Room({
         adaptiveStream: true,
@@ -160,7 +178,7 @@ export function useCallPageLogic(sessionId: string) {
         },
       });
 
-      // Setup event listeners before connecting
+      roomRef.current = newRoom; // Store in ref
       setupRoomEventListeners(newRoom);
 
       // Connect to room
@@ -173,61 +191,55 @@ export function useCallPageLogic(sessionId: string) {
       // Determine media constraints based on call mode
       const shouldRequestVideo = callMode === 'video';
       
-      // Set initial mute states based on mode
+      // Set initial mute states
       setIsAudioMuted(false);
-      setIsVideoMuted(!shouldRequestVideo); // Muted by default in audio mode
+      setIsVideoMuted(!shouldRequestVideo);
 
-      if (localVideoRef.current) {
-        // Request only necessary media
+      // Handle media permissions
+      try {
         const streamConstraints = {
           audio: true,
           video: shouldRequestVideo
         };
 
-        try {
-          // Get media stream with appropriate constraints
-          const stream = await navigator.mediaDevices.getUserMedia(streamConstraints);
-          // Stop tracks immediately since LiveKit will create its own
-          stream.getTracks().forEach(track => track.stop());
-        } catch (err) {
-          // Handle permission errors gracefully, especially if video denied in video mode
-          if (shouldRequestVideo && err instanceof Error && (
-            err.name === 'NotAllowedError' || 
-            err.name === 'PermissionDeniedError'
-          )) {
-            setConnectionError('Camera permission denied. Please enable camera access or switch to audio-only mode.');
-            await newRoom.disconnect();
-            return;
-          }
-          // For audio-only mode, ignore video errors
-          if (!shouldRequestVideo) {
-            // Proceed with audio-only
+        // Test permissions without keeping the stream
+        const stream = await navigator.mediaDevices.getUserMedia(streamConstraints);
+        stream.getTracks().forEach(track => track.stop()); // CRITICAL: Release tracks immediately
+      } catch (err) {
+        if (err instanceof Error) {
+          if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+            if (shouldRequestVideo) {
+              setConnectionError('Camera permission denied. Please enable camera access or switch to audio-only mode.');
+              await newRoom.disconnect();
+              return;
+            }
+            // For audio-only mode, we proceed even if video is denied
           } else {
             throw err;
           }
         }
-
-        // Create LiveKit tracks
-        const tracks = await localParticipant.createTracks({
-          video: shouldRequestVideo,
-          audio: true,
-        });
-        
-        tracks.forEach(track => {
-          if (track.kind === 'video' && localVideoRef.current && shouldRequestVideo) {
-            track.attach(localVideoRef.current);
-          }
-          localParticipant.publishTrack(track);
-        });
-        
-        // If in audio-only mode, clear local video display
-        if (!shouldRequestVideo && localVideoRef.current) {
-          localVideoRef.current.srcObject = null;
-          localVideoRef.current.style.backgroundColor = '#1f2937';
-        }
       }
 
-      // Update session status to active if it's still pending
+      // Create and publish tracks
+      const tracks = await localParticipant.createTracks({
+        video: shouldRequestVideo,
+        audio: true,
+      });
+      
+      tracks.forEach(track => {
+        if (track.kind === 'video' && localVideoRef.current && shouldRequestVideo) {
+          track.attach(localVideoRef.current);
+        }
+        localParticipant.publishTrack(track);
+      });
+      
+      // Handle audio-only mode display
+      if (!shouldRequestVideo && localVideoRef.current) {
+        localVideoRef.current.srcObject = null;
+        localVideoRef.current.style.backgroundColor = '#1f2937';
+      }
+
+      // Update session status to active
       const { data: sessionData, error: sessionError } = await supabase
         .from('sessions')
         .select('*')
@@ -241,30 +253,20 @@ export function useCallPageLogic(sessionId: string) {
           .eq('id', sessionId);
       }
 
-      setRoom(newRoom);
       setIsConnected(true);
-      
       console.log('Successfully connected to LiveKit room:', sessionId);
     } catch (error) {
       console.error('Error connecting to LiveKit room:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to connect to the call';
       setConnectionError(errorMessage);
-      
-      // Check for specific permission errors
-      if (error instanceof Error && (
-        error.message.includes('NotAllowedError') || 
-        error.message.includes('Permission denied')
-      )) {
-        setConnectionError('Please allow camera and microphone permissions to join the call.');
-      }
     } finally {
+      setIsInitializing(false);
       setConnecting(false);
     }
   };
 
   // Setup event listeners for the room
   const setupRoomEventListeners = (room: Room) => {
-    // Participant connected
     room.on('participantConnected', (participant: RemoteParticipant) => {
       console.log(`Participant connected: ${participant.identity}`);
       
@@ -275,20 +277,14 @@ export function useCallPageLogic(sessionId: string) {
         return prev;
       });
       
-      // Subscribe to all tracks immediately
-      participant.trackPublications.forEach((publication: RemoteTrackPublication) => {
-        if (publication.track) {
-          // No need to set subscription permissions in newer LiveKit versions
-          // as tracks are auto-subscribed by default
-        }
-      });
+      // Add system message
+      addSystemMessage(`${participant.name || 'Someone'} has joined the call`);
     });
 
-    // Participant disconnected
     room.on('participantDisconnected', (participant: RemoteParticipant) => {
       console.log(`Participant disconnected: ${participant.identity}`);
       
-      // Cleanup media elements for this participant
+      // Cleanup media elements
       if (remoteVideoRefs.current.has(participant.identity)) {
         const videoEl = remoteVideoRefs.current.get(participant.identity);
         if (videoEl) {
@@ -309,17 +305,10 @@ export function useCallPageLogic(sessionId: string) {
 
       setParticipants(prev => prev.filter(p => p.identity !== participant.identity));
       
-      // Add system message to chat
       addSystemMessage(`${participant.name || 'Someone'} has left the call`);
     });
 
-    // Track published
-    room.on('trackPublished', (publication: RemoteTrackPublication, participant: RemoteParticipant) => {
-      console.log(`Track published by ${participant.identity}: ${publication.kind}`);
-    });
-
-    // Track subscribed (audio or video)
-    room.on('trackSubscribed', (track: RemoteTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
+    room.on('trackSubscribed', (track: RemoteTrack, _, participant: RemoteParticipant) => {
       console.log(`Track subscribed from ${participant.identity}: ${track.kind}`);
       
       if (track.kind === 'audio') {
@@ -337,7 +326,7 @@ export function useCallPageLogic(sessionId: string) {
         if (!videoEl) {
           videoEl = document.createElement('video');
           videoEl.autoplay = true;
-          videoEl.setAttribute('playsinline', 'true');
+          videoEl.playsInline = true; // Modern property instead of attribute
           videoEl.className = 'w-full h-full object-cover rounded-lg';
           remoteVideoRefs.current.set(participant.identity, videoEl);
         }
@@ -345,26 +334,22 @@ export function useCallPageLogic(sessionId: string) {
       }
     });
 
-    // Track unsubscribed
-    room.on('trackUnsubscribed', (track: RemoteTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
-      console.log(`Track unsubscribed from ${participant.identity}: ${track.kind}`);
+    room.on('trackUnsubscribed', (track: RemoteTrack) => {
       track.detach();
     });
 
-    // Data received (chat messages)
     room.on('dataReceived', (payload: Uint8Array, participant?: RemoteParticipant) => {
       try {
         const message = new TextDecoder().decode(payload);
         const data = JSON.parse(message);
         
         if (data.type === 'chat') {
-          const sender = participant || room.localParticipant;
-          const senderName = participant ? participant.name : 'You';
+          const senderName = participant?.name || 'Anonymous';
           
           addChatMessage({
             id: Date.now().toString(),
-            sender_id: sender.identity,
-            sender_name: senderName || 'Anonymous',
+            sender_id: participant?.identity || 'system',
+            sender_name: senderName,
             content: data.content,
             timestamp: new Date()
           });
@@ -374,7 +359,6 @@ export function useCallPageLogic(sessionId: string) {
       }
     });
 
-    // Room disconnected
     room.on('disconnected', () => {
       console.log('Disconnected from room');
       setIsConnected(false);
@@ -384,7 +368,7 @@ export function useCallPageLogic(sessionId: string) {
 
   // Toggle audio mute
   const toggleAudioMute = async () => {
-    if (!room || !localParticipant) return;
+    if (!roomRef.current || !localParticipant) return;
     
     try {
       const newState = !isAudioMuted;
@@ -392,15 +376,13 @@ export function useCallPageLogic(sessionId: string) {
       // Get audio tracks
       const audioTrackPublication = Array.from(localParticipant.audioTrackPublications.values())[0];
       
-      if (audioTrackPublication && audioTrackPublication.track) {
-        // Unpublish existing track
+      if (audioTrackPublication?.track) {
         await localParticipant.unpublishTrack(audioTrackPublication.track);
       }
       
       if (!newState) {
-        // Create new audio track if unmuting
         const tracks = await localParticipant.createTracks({ audio: true });
-        if (tracks.length > 0 && tracks[0]) {
+        if (tracks[0]) {
           await localParticipant.publishTrack(tracks[0]);
         }
       }
@@ -413,39 +395,36 @@ export function useCallPageLogic(sessionId: string) {
     }
   };
 
-  // Toggle video mute — now respects call mode
+  // Toggle video mute
   const toggleVideoMute = async () => {
-    // Prevent video toggling in audio-only mode
     if (callMode === 'audio') {
       console.warn('Video toggle disabled in audio-only mode');
       return;
     }
 
-    if (!room || !localParticipant || !localVideoRef.current) return;
+    if (!roomRef.current || !localParticipant || !localVideoRef.current) return;
     
     try {
       const newState = !isVideoMuted;
       
-      // Get video tracks
       const videoTrackPublication = Array.from(localParticipant.videoTrackPublications.values())[0];
       
-      if (videoTrackPublication && videoTrackPublication.track) {
-        // Unpublish existing track
+      if (videoTrackPublication?.track) {
         await localParticipant.unpublishTrack(videoTrackPublication.track);
       }
       
       if (!newState) {
-        // Create new video track if unmuting
         const tracks = await localParticipant.createTracks({ 
           video: { resolution: { width: 1280, height: 720 } }
         });
         
-        if (tracks.length > 0 && tracks[0].kind === 'video') {
-          tracks[0].attach(localVideoRef.current);
-          await localParticipant.publishTrack(tracks[0]);
+        const videoTrack = tracks.find(t => t.kind === 'video');
+        if (videoTrack) {
+          videoTrack.attach(localVideoRef.current);
+          await localParticipant.publishTrack(videoTrack);
+          localVideoRef.current.style.backgroundColor = 'transparent';
         }
       } else {
-        // Show placeholder when video is muted
         localVideoRef.current.srcObject = null;
         localVideoRef.current.style.backgroundColor = '#1f2937';
       }
@@ -476,7 +455,7 @@ export function useCallPageLogic(sessionId: string) {
 
   // Send chat message
   const sendChatMessage = async () => {
-    if (!room || !newMessage.trim() || !user) return;
+    if (!roomRef.current || !newMessage.trim() || !user) return;
 
     try {
       const message = {
@@ -485,13 +464,11 @@ export function useCallPageLogic(sessionId: string) {
         timestamp: new Date().toISOString()
       };
 
-      // Send via data channel
-      await room.localParticipant.publishData(
+      await roomRef.current.localParticipant.publishData(
         new TextEncoder().encode(JSON.stringify(message)),
         { reliable: true }
       );
 
-      // Add to local chat immediately
       addChatMessage({
         id: Date.now().toString(),
         sender_id: user.id,
@@ -524,8 +501,10 @@ export function useCallPageLogic(sessionId: string) {
 
   // Leave the room
   const leaveRoom = async () => {
-    if (room) {
-      // Send goodbye message
+    if (!roomRef.current) return;
+
+    try {
+      // Send goodbye message (best effort)
       try {
         const goodbyeMessage = {
           type: 'chat',
@@ -533,17 +512,17 @@ export function useCallPageLogic(sessionId: string) {
           timestamp: new Date().toISOString()
         };
 
-        await room.localParticipant.publishData(
+        await roomRef.current.localParticipant.publishData(
           new TextEncoder().encode(JSON.stringify(goodbyeMessage)),
           { reliable: true }
         );
       } catch (error) {
-        console.error('Error sending goodbye message:', error);
+        console.warn('Goodbye message failed (non-critical):', error);
       }
       
-      room.disconnect();
+      // CRITICAL FIX 5: Proper disconnection sequence
+      roomRef.current.disconnect();
       cleanupMediaElements();
-      setIsConnected(false);
       
       // Update session status if this was the last participant
       if (sessionInfo?.status === 'active') {
@@ -552,14 +531,16 @@ export function useCallPageLogic(sessionId: string) {
           .select('*', { count: 'exact', head: true })
           .eq('session_id', sessionId);
         
-        if (count !== null && count <= 1) { // Only this user remaining
+        if (count !== null && count <= 1) {
           await supabase
             .from('sessions')
             .update({ status: 'ended' })
             .eq('id', sessionId);
         }
       }
-      
+    } finally {
+      roomRef.current = null;
+      setIsConnected(false);
       router.push('/connect');
     }
   };
@@ -568,12 +549,16 @@ export function useCallPageLogic(sessionId: string) {
   useEffect(() => {
     if (authLoading || !user) return;
 
+    // CRITICAL FIX 6: Prevent multiple initializations
+    if (isConnected || connecting || isInitializing) {
+      return;
+    }
+
     const initCall = async () => {
       const sessionData = await fetchSessionDetails();
       if (sessionData) {
         await connectToRoom();
         
-        // Add welcome message
         setTimeout(() => {
           addSystemMessage('Welcome to your healing space. This is a safe place to share and be heard.');
         }, 1000);
@@ -584,12 +569,12 @@ export function useCallPageLogic(sessionId: string) {
 
     // Setup interval to update session status
     const statusInterval = setInterval(async () => {
-      if (isConnected) {
-        // Check if session should be ended due to inactivity
+      if (isConnected && roomRef.current) {
         const { data: participantsData, error: participantsError } = await supabase
           .from('session_participants')
           .select('user_id')
           .eq('session_id', sessionId);
+        
         if (!participantsError && participantsData && participantsData.length === 0) {
           await supabase
             .from('sessions')
@@ -598,24 +583,25 @@ export function useCallPageLogic(sessionId: string) {
           leaveRoom();
         }
       }
-    }, 30000); // Check every 30 seconds
+    }, 30000);
 
+    // CRITICAL FIX 7: Fixed cleanup with roomRef
     return () => {
       clearInterval(statusInterval);
-      if (room) {
-        room.disconnect();
+      if (roomRef.current) {
+        roomRef.current.disconnect();
         cleanupMediaElements();
+        roomRef.current = null;
       }
     };
-  }, [authLoading, user, sessionId]);
+  }, [authLoading, user, sessionId, isConnected, connecting, isInitializing]);
 
-  // Handle browser tab close or refresh
+  // Handle browser tab close
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (isConnected && room) {
+      if (isConnected && roomRef.current) {
         e.preventDefault();
         e.returnValue = 'You are currently in a call. Are you sure you want to leave?';
-        return 'You are currently in a call. Are you sure you want to leave?';
       }
     };
 
@@ -623,7 +609,7 @@ export function useCallPageLogic(sessionId: string) {
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
-  }, [isConnected, room]);
+  }, [isConnected]);
 
   // Auto-scroll chat
   useEffect(() => {
@@ -664,7 +650,7 @@ export function useCallPageLogic(sessionId: string) {
     newMessage,
     connectionError,
     user,
-    callMode, // Expose mode to UI if needed
+    callMode,
     
     // Refs
     localVideoRef,
