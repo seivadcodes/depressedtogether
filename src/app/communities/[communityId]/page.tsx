@@ -206,7 +206,7 @@ export default function CommunityDetailPage() {
       const fileName = `${communityId}/posts/${postId}.${fileExt}`;
       
       const { error: uploadError } = await supabase.storage
-        .from('community-media')
+        .from('communities')
         .upload(fileName, file, {
           upsert: true,
           contentType: file.type
@@ -215,7 +215,7 @@ export default function CommunityDetailPage() {
       if (uploadError) throw uploadError;
 
       const { data } = supabase.storage
-        .from('community-media')
+        .from('communities')
         .getPublicUrl(fileName);
 
       return data.publicUrl;

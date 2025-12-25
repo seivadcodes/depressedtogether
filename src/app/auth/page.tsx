@@ -8,7 +8,7 @@ import { useAuth } from '@/hooks/useAuth';
 import Button from '@/components/ui/button';
 
 export default function AuthPage() {
-  const { user, loading: authLoading, sessionChecked, signIn, signUp } = useAuth(); // Added signIn and signUp
+  const { user, loading, signIn, signUp } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get('redirectTo') || '/dashboard';
@@ -19,21 +19,33 @@ export default function AuthPage() {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // Only redirect if session has been fully checked and user is authenticated
+  // Redirect if already authenticated
   useEffect(() => {
-    if (sessionChecked && user && !authLoading) {
-      // Prevent redirect loop by checking if we're already on the target page
-      const currentPath = window.location.pathname;
-      const targetPath = redirectTo.startsWith('/') ? redirectTo : `/${redirectTo}`;
-      
-      if (currentPath !== targetPath) {
-        router.replace(redirectTo);
-      }
+    if (!loading && user) {
+      router.replace(redirectTo);
     }
-  }, [user, authLoading, sessionChecked, router, redirectTo]);
+  }, [user, loading, router, redirectTo]);
 
-  // Show loading state while auth is being checked
-  if (authLoading || !sessionChecked) {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSubmitting(true);
+
+    try {
+      if (authMode === 'sign-in') {
+        await signIn(email, password);
+      } else {
+        await signUp(email, password);
+      }
+      // Redirect handled automatically by useEffect above
+    } catch (err: any) {
+      setError(err.message || 'Authentication failed. Please check your credentials.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-amber-50 via-stone-50 to-stone-100 flex items-center justify-center">
         <div className="text-center">
@@ -43,25 +55,6 @@ export default function AuthPage() {
       </div>
     );
   }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setSubmitting(true);
-
-    try {
-      if (authMode === 'sign-in') {
-        await signIn(email, password); // Now correctly defined
-      } else {
-        await signUp(email, password); // Now correctly defined
-      }
-      // Redirect handled automatically by useEffect above
-    } catch (err: any) {
-      setError(err.message || 'Authentication failed. Please check your credentials.');
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   // If user is present and authenticated, they'll be redirected above
   if (user) return null;
