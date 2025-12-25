@@ -2,17 +2,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
-import Button from '@/components/ui/button';
 
 export default function AuthPage() {
   const { user, loading, signIn, signUp } = useAuth();
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const redirectTo = searchParams.get('redirectTo') || '/dashboard';
-  
+
   const [authMode, setAuthMode] = useState<'sign-in' | 'sign-up'>('sign-in');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -22,9 +18,9 @@ export default function AuthPage() {
   // Redirect if already authenticated
   useEffect(() => {
     if (!loading && user) {
-      router.replace(redirectTo);
+      router.replace('/dashboard');
     }
-  }, [user, loading, router, redirectTo]);
+  }, [user, loading, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,9 +33,9 @@ export default function AuthPage() {
       } else {
         await signUp(email, password);
       }
-      // Redirect handled automatically by useEffect above
+      // Redirect handled automatically by onAuthStateChange in useAuth
     } catch (err: any) {
-      setError(err.message || 'Authentication failed. Please check your credentials.');
+      setError(err.message || 'Authentication failed');
     } finally {
       setSubmitting(false);
     }
@@ -47,106 +43,81 @@ export default function AuthPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-amber-50 via-stone-50 to-stone-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-solid border-amber-500 border-t-transparent mx-auto mb-4"></div>
-          <p className="text-stone-600">Checking your session...</p>
-        </div>
+      <div style={{ padding: '2rem', textAlign: 'center' }}>
+        Checking session...
       </div>
     );
   }
 
-  // If user is present and authenticated, they'll be redirected above
+  // If user is present, they'll be redirected above — this is just a safety net
   if (user) return null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-amber-50 via-stone-50 to-stone-100 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-md border border-stone-200">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-gradient-to-br from-amber-200 to-orange-300 mx-auto mb-4">
-            <span className="text-white text-2xl">🫂</span>
-          </div>
-          <h1 className="text-2xl font-bold text-stone-800">
-            {authMode === 'sign-in' ? 'Welcome Back' : 'Create Your Healing Space'}
-          </h1>
-          <p className="text-stone-600 mt-2">
-            {authMode === 'sign-in' 
-              ? 'Sign in to continue your healing journey' 
-              : 'Join a compassionate community that understands'}
-          </p>
+    <div style={{ padding: '2rem', maxWidth: '400px', margin: '0 auto' }}>
+      <h1 style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>
+        {authMode === 'sign-in' ? 'Sign In' : 'Create Account'}
+      </h1>
+
+      {error && (
+        <div style={{ color: 'red', marginBottom: '1rem', padding: '0.5rem', backgroundColor: '#ffebee', borderRadius: '4px' }}>
+          {error}
         </div>
+      )}
 
-        {error && (
-          <div className="mb-6 p-3 bg-red-50 text-red-700 rounded-lg text-sm border border-red-200">
-            {error}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div className="space-y-1">
-            <label htmlFor="email" className="block text-sm font-medium text-stone-700">
-              Email address
-            </label>
-            <input
-              id="email"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 border border-stone-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
-              placeholder="you@example.com"
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label htmlFor="password" className="block text-sm font-medium text-stone-700">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              required
-              minLength={6}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 border border-stone-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
-              placeholder="••••••••"
-            />
-          </div>
-
-          <Button
-            type="submit"
-            disabled={submitting}
-            className="w-full bg-amber-500 hover:bg-amber-600 text-white py-3 font-medium rounded-xl transition-colors"
-          >
-            {submitting ? (
-              <span className="flex items-center justify-center">
-                <span className="h-5 w-5 animate-spin rounded-full border-2 border-solid border-white border-t-transparent mr-2"></span>
-                {authMode === 'sign-in' ? 'Signing in...' : 'Creating account...'}
-              </span>
-            ) : (
-              authMode === 'sign-in' ? 'Sign In' : 'Create Account'
-            )}
-          </Button>
-        </form>
-
-        <div className="mt-6 text-center">
-          <button
-            type="button"
-            onClick={() => setAuthMode(authMode === 'sign-in' ? 'sign-up' : 'sign-in')}
-            className="text-sm text-amber-700 hover:text-amber-800 font-medium hover:underline"
-          >
-            {authMode === 'sign-in' 
-              ? "Don't have an account? Create one" 
-              : "Already have an account? Sign in"}
-          </button>
+      <form onSubmit={handleSubmit}>
+        <div style={{ marginBottom: '1rem' }}>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Email"
+            required
+            style={{ width: '100%', padding: '0.75rem', borderRadius: '4px', border: '1px solid #ccc' }}
+          />
         </div>
-
-        <div className="mt-8 pt-6 border-t border-stone-100 text-center text-xs text-stone-500">
-          <p>By continuing, you agree to our <Link href="/terms" className="text-amber-700 hover:underline">Terms</Link> and <Link href="/privacy" className="text-amber-700 hover:underline">Privacy Policy</Link></p>
-          <p className="mt-1">Healing Shoulder is a supportive community. Your grief is valid here.</p>
+        <div style={{ marginBottom: '1rem' }}>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Password"
+            required
+            minLength={6}
+            style={{ width: '100%', padding: '0.75rem', borderRadius: '4px', border: '1px solid #ccc' }}
+          />
         </div>
-      </div>
+        <button
+          type="submit"
+          disabled={submitting}
+          style={{
+            width: '100%',
+            padding: '0.75rem',
+            backgroundColor: '#0070f3',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: submitting ? 'not-allowed' : 'pointer',
+            opacity: submitting ? 0.8 : 1,
+          }}
+        >
+          {submitting ? 'Processing...' : authMode === 'sign-in' ? 'Sign In' : 'Sign Up'}
+        </button>
+      </form>
+
+      <button
+        type="button"
+        onClick={() => setAuthMode(authMode === 'sign-in' ? 'sign-up' : 'sign-in')}
+        style={{
+          marginTop: '1rem',
+          background: 'none',
+          border: 'none',
+          color: '#0070f3',
+          cursor: 'pointer',
+          fontSize: '0.9rem',
+        }}
+      >
+        {authMode === 'sign-in' ? 'Need an account? Sign up' : 'Already have an account? Sign in'}
+      </button>
     </div>
   );
 }
