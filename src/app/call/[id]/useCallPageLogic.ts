@@ -31,6 +31,7 @@ export function useCallPageLogic(sessionId: string) {
   const [connecting, setConnecting] = useState(true);
   const [sessionInfo, setSessionInfo] = useState<any | null>(null);
   const [sessionParticipants, setSessionParticipants] = useState<any[]>([]);
+  const [callMode, setCallMode] = useState<'audio' | 'video'>('audio'); // New state for mode
 
   // Chat state
   const [chatMessages, setChatMessages] = useState<any[]>([]);
@@ -71,15 +72,19 @@ export function useCallPageLogic(sessionId: string) {
     if (!sessionId || !user) return;
 
     try {
-      // Get session info
+      // Get session info (include mode if exists, fallback to 'audio')
       const { data: sessionData, error: sessionError } = await supabase
-  .from('sessions')
-  .select('status')
-  .eq('id', sessionId)
-  .single();
+        .from('sessions')
+        .select('status, mode')
+        .eq('id', sessionId)
+        .single();
 
       if (sessionError) throw sessionError;
-      setSessionInfo(sessionData);
+
+      // Backward compatibility: default to 'audio' if mode is missing or invalid
+      const mode = (sessionData?.mode === 'video') ? 'video' : 'audio';
+      setCallMode(mode);
+      setSessionInfo({ ...sessionData, mode });
 
       // Get participants with profile info
       const { data: participantsData, error: participantsError } = await supabase
@@ -96,7 +101,7 @@ export function useCallPageLogic(sessionId: string) {
       setSessionParticipants(participantsData || []);
       
       return {
-        session: sessionData,
+        session: { ...sessionData, mode },
         participants: participantsData
       };
     } catch (error) {
@@ -165,41 +170,69 @@ export function useCallPageLogic(sessionId: string) {
       const localParticipant = newRoom.localParticipant;
       setLocalParticipant(localParticipant);
       
-      // Set up local video
+      // Determine media constraints based on call mode
+      const shouldRequestVideo = callMode === 'video';
+      
+      // Set initial mute states based on mode
+      setIsAudioMuted(false);
+      setIsVideoMuted(!shouldRequestVideo); // Muted by default in audio mode
+
       if (localVideoRef.current) {
-        // Get camera permissions first
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: true, 
-          audio: true 
-        });
-        
-        // Stop any existing tracks
-        stream.getTracks().forEach(track => track.stop());
-        
-        // Create tracks with proper permissions
+        // Request only necessary media
+        const streamConstraints = {
+          audio: true,
+          video: shouldRequestVideo
+        };
+
+        try {
+          // Get media stream with appropriate constraints
+          const stream = await navigator.mediaDevices.getUserMedia(streamConstraints);
+          // Stop tracks immediately since LiveKit will create its own
+          stream.getTracks().forEach(track => track.stop());
+        } catch (err) {
+          // Handle permission errors gracefully, especially if video denied in video mode
+          if (shouldRequestVideo && err instanceof Error && (
+            err.name === 'NotAllowedError' || 
+            err.name === 'PermissionDeniedError'
+          )) {
+            setConnectionError('Camera permission denied. Please enable camera access or switch to audio-only mode.');
+            await newRoom.disconnect();
+            return;
+          }
+          // For audio-only mode, ignore video errors
+          if (!shouldRequestVideo) {
+            // Proceed with audio-only
+          } else {
+            throw err;
+          }
+        }
+
+        // Create LiveKit tracks
         const tracks = await localParticipant.createTracks({
-          video: true,
+          video: shouldRequestVideo,
           audio: true,
         });
         
         tracks.forEach(track => {
-          if (track.kind === 'video' && localVideoRef.current) {
+          if (track.kind === 'video' && localVideoRef.current && shouldRequestVideo) {
             track.attach(localVideoRef.current);
           }
           localParticipant.publishTrack(track);
         });
         
-        // Set initial mute states
-        setIsAudioMuted(false);
-        setIsVideoMuted(false);
+        // If in audio-only mode, clear local video display
+        if (!shouldRequestVideo && localVideoRef.current) {
+          localVideoRef.current.srcObject = null;
+          localVideoRef.current.style.backgroundColor = '#1f2937';
+        }
       }
 
       // Update session status to active if it's still pending
       const { data: sessionData, error: sessionError } = await supabase
-  .from('sessions')
-  .select('*')
-  .eq('id', sessionId)
-  .single();
+        .from('sessions')
+        .select('*')
+        .eq('id', sessionId)
+        .single();
 
       if (!sessionError && sessionData?.status === 'pending') {
         await supabase
@@ -380,8 +413,14 @@ export function useCallPageLogic(sessionId: string) {
     }
   };
 
-  // Toggle video mute
+  // Toggle video mute — now respects call mode
   const toggleVideoMute = async () => {
+    // Prevent video toggling in audio-only mode
+    if (callMode === 'audio') {
+      console.warn('Video toggle disabled in audio-only mode');
+      return;
+    }
+
     if (!room || !localParticipant || !localVideoRef.current) return;
     
     try {
@@ -408,7 +447,6 @@ export function useCallPageLogic(sessionId: string) {
       } else {
         // Show placeholder when video is muted
         localVideoRef.current.srcObject = null;
-        // Optionally show a placeholder image
         localVideoRef.current.style.backgroundColor = '#1f2937';
       }
       
@@ -549,9 +587,9 @@ export function useCallPageLogic(sessionId: string) {
       if (isConnected) {
         // Check if session should be ended due to inactivity
         const { data: participantsData, error: participantsError } = await supabase
-  .from('session_participants')
-  .select('user_id')
-  .eq('session_id', sessionId);
+          .from('session_participants')
+          .select('user_id')
+          .eq('session_id', sessionId);
         if (!participantsError && participantsData && participantsData.length === 0) {
           await supabase
             .from('sessions')
@@ -626,6 +664,7 @@ export function useCallPageLogic(sessionId: string) {
     newMessage,
     connectionError,
     user,
+    callMode, // Expose mode to UI if needed
     
     // Refs
     localVideoRef,

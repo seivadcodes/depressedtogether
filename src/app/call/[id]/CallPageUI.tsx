@@ -15,9 +15,10 @@ import {
   ArrowLeft,
   Heart,
   Clock,
-  Send
+  Send,
+  AlertCircle
 } from 'lucide-react';
-import React, { useRef, RefObject } from 'react';
+import React, { useRef, RefObject, useMemo } from 'react';
 
 interface CallPageUIProps {
   // State
@@ -34,8 +35,8 @@ interface CallPageUIProps {
   user: any | null;
   
   // Refs
- localVideoRef: RefObject<HTMLVideoElement | null>;
-chatContainerRef: RefObject<HTMLDivElement | null>;
+  localVideoRef: RefObject<HTMLVideoElement | null>;
+  chatContainerRef: RefObject<HTMLDivElement | null>;
   
   // Callbacks
   leaveRoom: () => void;
@@ -67,6 +68,10 @@ export default function CallPageUI({
   setNewMessage,
   handleChatKeyPress
 }: CallPageUIProps) {
+  // Determine session mode capabilities
+  const isAudioOnly = sessionInfo?.mode === 'audio';
+  const isVideoEnabled = sessionInfo?.mode === 'video' && !isVideoMuted;
+  
   // Grief type labels for display
   const griefTypeLabels: Record<string, string> = {
     parent: 'Loss of a Parent',
@@ -79,6 +84,25 @@ export default function CallPageUI({
     caregiver: 'Caregiver Grief',
     suicide: 'Suicide Loss',
     other: 'Other Loss',
+  };
+
+  // Get participant name with fallback
+  const getParticipantName = (participant: any) => {
+    if (!participant) return 'Anonymous';
+    const participantData = sessionParticipants.find(p => p.user_id === participant.identity);
+    const profile = participantData?.profiles?.[0];
+    return profile?.full_name || participant.name || 'Anonymous';
+  };
+
+  // Get participant initials for avatar
+  const getParticipantInitials = (name: string) => {
+    if (!name) return '?';
+    return name.split(' ')
+      .map(word => word[0])
+      .filter(char => /[A-Z]/i.test(char))
+      .slice(0, 2)
+      .join('')
+      .toUpperCase();
   };
 
   if (connecting && !isConnected) {
@@ -102,13 +126,21 @@ export default function CallPageUI({
           </p>
           
           <div className="text-center mb-6">
-            <p className="text-sm text-stone-500 mb-2">Please allow camera and microphone permissions when prompted</p>
+            <p className="text-sm text-stone-500 mb-2">
+              {isAudioOnly 
+                ? 'Please allow microphone permissions when prompted' 
+                : 'Please allow camera and microphone permissions when prompted'}
+            </p>
             <div className="inline-flex items-center gap-2 bg-amber-100 text-amber-800 text-sm px-3 py-1 rounded-full">
               <Mic className="h-3 w-3" />
               <span>Microphone</span>
-              <span className="mx-1">•</span>
-              <Video className="h-3 w-3" />
-              <span>Camera</span>
+              {!isAudioOnly && (
+                <>
+                  <span className="mx-1">•</span>
+                  <Video className="h-3 w-3" />
+                  <span>Camera</span>
+                </>
+              )}
             </div>
           </div>
           
@@ -142,8 +174,9 @@ export default function CallPageUI({
           </div>
           
           {connectionError && (
-            <div className="mt-6 p-3 bg-red-50 text-red-700 rounded-lg text-sm">
-              {connectionError}
+            <div className="mt-6 p-3 bg-red-50 text-red-700 rounded-lg text-sm flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+              <span>{connectionError}</span>
             </div>
           )}
           
@@ -206,82 +239,131 @@ export default function CallPageUI({
       {/* Main Content */}
       <div className="max-w-6xl mx-auto px-4 py-6">
         {connectionError && (
-          <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-lg border border-red-200">
-            {connectionError}. Please try refreshing the page or contact support if the issue persists.
+          <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-lg border border-red-200 flex items-start gap-2">
+            <AlertCircle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+            <span>
+              {connectionError}. Please try refreshing the page or contact support if the issue persists.
+            </span>
           </div>
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Video Area */}
+          {/* Video/Audio Area */}
           <div className="lg:col-span-2 space-y-4">
-            {/* Local Video */}
+            {/* Local Participant Area */}
             <Card className="overflow-hidden bg-stone-900 rounded-xl shadow-md">
               <div className="relative aspect-video bg-stone-800">
-                <video
-                  ref={localVideoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="w-full h-full object-cover"
-                />
-                <div className="absolute bottom-3 left-3 right-3 flex justify-between items-center">
-                  <div className="bg-black/50 backdrop-blur-sm px-3 py-1.5 rounded-full">
-                    <span className="text-white text-sm font-medium">
-                      You {isAudioMuted && '(muted)'}
-                    </span>
+                {isAudioOnly ? (
+                  // Audio-only mode representation
+                  <div className="w-full h-full flex flex-col items-center justify-center p-4">
+                    <div className="w-24 h-24 rounded-full bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center mb-4">
+                      <span className="text-2xl font-bold text-white">
+                        {user?.full_name ? getParticipantInitials(user.full_name) : 'Y'}
+                      </span>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-white font-medium text-lg">You</p>
+                      <div className="mt-2 flex items-center justify-center gap-2">
+                        <Mic className={`h-5 w-5 ${isAudioMuted ? 'text-red-400' : 'text-amber-400'}`} />
+                        <span className={`text-sm ${isAudioMuted ? 'text-red-300' : 'text-amber-300'}`}>
+                          {isAudioMuted ? 'Microphone muted' : 'Microphone active'}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={toggleAudioMute}
-                      className={`p-2 rounded-full ${
-                        isAudioMuted ? 'bg-red-500/20 text-red-400' : 'bg-black/30 text-white hover:bg-black/40'
-                      }`}
-                      title={isAudioMuted ? 'Unmute microphone' : 'Mute microphone'}
-                    >
-                      {isAudioMuted ? (
-                        <MicOff className="h-5 w-5" />
-                      ) : (
-                        <Mic className="h-5 w-5" />
-                      )}
-                    </button>
-                    <button
-                      onClick={toggleVideoMute}
-                      className={`p-2 rounded-full ${
-                        isVideoMuted ? 'bg-red-500/20 text-red-400' : 'bg-black/30 text-white hover:bg-black/40'
-                      }`}
-                      title={isVideoMuted ? 'Enable camera' : 'Disable camera'}
-                    >
-                      {isVideoMuted ? (
-                        <VideoOff className="h-5 w-5" />
-                      ) : (
-                        <Video className="h-5 w-5" />
-                      )}
-                    </button>
-                  </div>
-                </div>
+                ) : (
+                  // Video mode
+                  <>
+                    <video
+                      ref={localVideoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute bottom-3 left-3 right-3 flex justify-between items-center">
+                      <div className="bg-black/50 backdrop-blur-sm px-3 py-1.5 rounded-full">
+                        <span className="text-white text-sm font-medium">
+                          You {isAudioMuted && '(muted)'}
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={toggleAudioMute}
+                          className={`p-2 rounded-full ${
+                            isAudioMuted ? 'bg-red-500/20 text-red-400' : 'bg-black/30 text-white hover:bg-black/40'
+                          }`}
+                          title={isAudioMuted ? 'Unmute microphone' : 'Mute microphone'}
+                        >
+                          {isAudioMuted ? (
+                            <MicOff className="h-5 w-5" />
+                          ) : (
+                            <Mic className="h-5 w-5" />
+                          )}
+                        </button>
+                        <button
+                          onClick={isAudioOnly ? undefined : toggleVideoMute}
+                          disabled={isAudioOnly}
+                          className={`p-2 rounded-full transition-opacity ${
+                            isAudioOnly
+                              ? 'opacity-50 cursor-not-allowed'
+                              : isVideoMuted 
+                                ? 'bg-red-500/20 text-red-400' 
+                                : 'bg-black/30 text-white hover:bg-black/40'
+                          }`}
+                          title={isAudioOnly ? "Video is disabled for this call" : (isVideoMuted ? 'Enable camera' : 'Disable camera')}
+                        >
+                          {isAudioOnly || isVideoMuted ? (
+                            <VideoOff className="h-5 w-5" />
+                          ) : (
+                            <Video className="h-5 w-5" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </Card>
 
-            {/* Remote Videos */}
+            {/* Remote Participants Area */}
             {participants.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className={`grid ${isAudioOnly ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2'} gap-4`}>
                 {participants.map((participant) => {
-                  if (participant.identity === user?.id) return null; // Skip local participant
+                  if (participant.identity === user?.id) return null;
                   
-                  const participantData = sessionParticipants.find(p => p.user_id === participant.identity);
-                  const profile = participantData?.profiles ? participantData.profiles[0] : null;
+                  const participantName = getParticipantName(participant);
+                  const initials = getParticipantInitials(participantName);
+                  
                   return (
                     <Card key={participant.identity} className="overflow-hidden bg-stone-900 rounded-xl shadow-md">
                       <div className="relative aspect-video bg-stone-800">
-                        <div 
-                          id={`remote-video-${participant.identity}`}
-                          className="w-full h-full"
-                        />
-                        <div className="absolute bottom-3 left-3 bg-black/50 backdrop-blur-sm px-3 py-1.5 rounded-full">
-                          <span className="text-white text-sm font-medium">
-                            {profile?.full_name || participant.name || 'Anonymous'}
-                          </span>
-                        </div>
+                        {isAudioOnly ? (
+                          // Audio-only participant representation
+                          <div className="w-full h-full flex flex-col items-center justify-center p-4">
+                            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-amber-400 to-amber-500 flex items-center justify-center mb-3">
+                              <span className="text-xl font-bold text-white">{initials}</span>
+                            </div>
+                            <p className="text-white font-medium text-lg">{participantName}</p>
+                            <div className="mt-2 flex items-center gap-1.5 bg-black/30 px-2 py-1 rounded-full">
+                              <Mic className="h-4 w-4 text-amber-300" />
+                              <span className="text-sm text-amber-200">Listening</span>
+                            </div>
+                          </div>
+                        ) : (
+                          // Video participant
+                          <>
+                            <div 
+                              id={`remote-video-${participant.identity}`}
+                              className="w-full h-full"
+                            />
+                            <div className="absolute bottom-3 left-3 bg-black/50 backdrop-blur-sm px-3 py-1.5 rounded-full">
+                              <span className="text-white text-sm font-medium">
+                                {participantName}
+                              </span>
+                            </div>
+                          </>
+                        )}
                       </div>
                     </Card>
                   );

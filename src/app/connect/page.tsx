@@ -316,100 +316,76 @@ export default function ConnectPage() {
   };
 
   const acceptRequest = async (request: SupportRequest) => {
-  if (!user || acceptingRequestId === request.id) return;
+    if (!user || acceptingRequestId === request.id) return;
 
-  setAcceptingRequestId(request.id);
-  setError(null);
-
-  try {
-    // ➤ STEP 1: Fetch BOTH users' preferences
-    const [requesterProfile, acceptorProfile] = await Promise.all([
-      supabase
-        .from('profiles')
-        .select('accepts_video_calls')
-        .eq('id', request.user_id)
-        .single(),
-      supabase
-        .from('profiles')
-        .select('accepts_video_calls')
-        .eq('id', user.id)
-        .single(),
-    ]);
-
-    if (requesterProfile.error || acceptorProfile.error) {
-      throw new Error('Failed to load user preferences.');
+    if (request.user_id === user.id) {
+      setError('You cannot accept your own support request.');
+      return;
     }
 
-    const requesterAcceptsVideo = requesterProfile.data?.accepts_video_calls ?? false;
-    const acceptorAcceptsVideo = acceptorProfile.data?.accepts_video_calls ?? false;
+    setAcceptingRequestId(request.id);
+    setError(null);
 
-    // ➤ STEP 2: Decide call mode
-    const callMode = requesterAcceptsVideo && acceptorAcceptsVideo ? 'video' : 'audio';
+    try {
+      console.log('[acceptRequest] Accepting request:', request.id);
 
-    // ➤ STEP 3: Proceed with session creation/update
-    let session: Session;
-
-    if (!request.session_id) {
-      // Create new session WITH mode
-      const sessionId = uuidv4();
-      const { data, error } = await supabase
-        .from('sessions')
-        .insert({
-          id: sessionId,
-          session_type: request.request_type,
-          title: request.request_type === 'one_on_one' 
-            ? 'One-on-One Support' 
-            : 'Group Support Circle',
-          host_id: user.id,
-          grief_types: [request.grief_type],
-          status: 'pending',
-          mode: callMode, // ✅ STORE MODE HERE
-          participant_limit: request.request_type === 'one_on_one' ? 2 : 8,
-          created_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-      session = data as Session;
-
-      // Link session to request
-      const { error: linkError } = await supabase
+      const { error: updateError } = await supabase
         .from('support_requests')
-        .update({ session_id: session.id })
+        .update({ 
+          status: 'matched',
+          matched_at: new Date().toISOString(),
+        })
         .eq('id', request.id);
-      if (linkError) throw linkError;
-    } else {
-      // Update existing session mode (in case it was missing)
-      const { data, error } = await supabase
-        .from('sessions')
-        .update({ mode: callMode })
-        .eq('id', request.session_id)
-        .select()
-        .single();
-      if (error) throw error;
-      session = data as Session;
+
+      if (updateError) {
+        console.error('[acceptRequest] Failed to update request:', updateError);
+        throw new Error(`Failed to update request: ${updateError.message}`);
+      }
+
+      let session: Session;
+
+      if (!request.session_id) {
+        console.log('[acceptRequest] Creating new session...');
+        session = await createSupportSession(request.request_type, request.grief_type);
+        
+        const { error: linkError } = await supabase
+          .from('support_requests')
+          .update({ session_id: session.id })
+          .eq('id', request.id);
+
+        if (linkError) throw linkError;
+      } else {
+        const { data: sessionData, error: sessionError } = await supabase
+          .from('sessions')
+          .select('*')
+          .eq('id', request.session_id)
+          .single();
+
+        if (sessionError) throw sessionError;
+        session = sessionData;
+      }
+
+      const participantRecords = [
+        { session_id: session.id, user_id: user.id, joined_at: new Date().toISOString() },
+        { session_id: session.id, user_id: request.user_id, joined_at: new Date().toISOString() }
+      ];
+      
+      const { error: participantError } = await supabase
+        .from('session_participants')
+        .upsert(participantRecords);
+
+      if (participantError) throw participantError;
+
+      // Notify requester via real-time update (handled by their subscription)
+      // Redirect acceptor immediately
+      router.push(`/call/${session.id}`);
+    } catch (err) {
+      console.error('[acceptRequest] Error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to accept request. Please try again.');
+    } finally {
+      setAcceptingRequestId(null);
     }
-
-    // Add both as participants
-    const participantRecords = [
-      { session_id: session.id, user_id: user.id, joined_at: new Date().toISOString() },
-      { session_id: session.id, user_id: request.user_id, joined_at: new Date().toISOString() }
-    ];
-    const { error: participantError } = await supabase
-      .from('session_participants')
-      .upsert(participantRecords);
-    if (participantError) throw participantError;
-
-    // ➤ STEP 4: Redirect
-    router.push(`/call/${session.id}`);
-  } catch (err) {
-    console.error('[acceptRequest] Error:', err);
-    setError(err instanceof Error ? err.message : 'Failed to accept request.');
-  } finally {
-    setAcceptingRequestId(null);
-  }
-};
+  };
 
   const postSupportRequest = async () => {
     if (!user || !griefType || !requestDescription.trim() || isPostingRequest) return;
