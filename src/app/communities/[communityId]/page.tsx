@@ -32,12 +32,11 @@ interface Community {
 }
 
 interface Member {
-  id: string;
-  user_id: string;
+  user_id: string;          // ← primary identifier
   username: string;
   avatar_url: string | null;
   last_online: string | null;
-  is_online: boolean; // Added this property to fix TypeScript error
+  is_online: boolean;
   role: 'member' | 'admin' | 'moderator';
   joined_at: string;
 }
@@ -155,22 +154,21 @@ export default function CommunityDetailPage() {
         }
 
         // Fetch members with user details
-        const { data: membersData, error: membersError } = await supabase
-          .from('community_members')
-.select(`
-  id,
-  role,
-  joined_at,
-  user_id,
-  user:profiles!inner (
-    id,
-    full_name,
-    avatar_url,
-    last_online
-  )
-`)
-.eq('community_id', communityId)
-.order('joined_at', { ascending: true });
+       const { data: membersData, error: membersError } = await supabase
+  .from('community_members')
+  .select(`
+    role,
+    joined_at,
+    user_id,
+    user:profiles!inner (
+      
+      full_name,
+      avatar_url,
+      last_online
+    )
+  `)
+  .eq('community_id', communityId)
+  .order('joined_at', { ascending: true });
 
         if (membersError) throw membersError;
         
@@ -178,7 +176,7 @@ export default function CommunityDetailPage() {
        const formattedMembers = membersData.map(member => {
   const profile = Array.isArray(member.user) ? member.user[0] : member.user;
   return {
-    id: member.id,
+    
     user_id: member.user_id,
     username: profile.full_name || 'Anonymous', // map to username for UI
     avatar_url: profile.avatar_url,
@@ -322,7 +320,7 @@ export default function CommunityDetailPage() {
           user_id,
           user:profiles!inner (
             id,
-            username,
+            full_name,
             avatar_url
           )
         `)
@@ -337,7 +335,7 @@ export default function CommunityDetailPage() {
         content: data.content,
         created_at: data.created_at,
         user_id: data.user_id,
-        username: userData.username || 'Anonymous',
+        username: userData?.full_name || 'Anonymous', 
         avatar_url: userData.avatar_url,
         community_id: data.community_id,
         likes_count: data.likes_count || 0,
@@ -681,7 +679,7 @@ export default function CommunityDetailPage() {
                 {members.map(member => {
                   return (
                     <div 
-                      key={member.id} 
+                      key={member.user_id} 
                       className="flex items-center justify-between p-2 hover:bg-stone-50 rounded-lg transition-colors"
                     >
                       <div className="flex items-center gap-3 min-w-0">
