@@ -536,34 +536,40 @@ setCommunity(communityWithPhoto);
           setIsMember(false);
           setUserRole(null);
         }
-        // Fetch members
-        const { data: membersData, error: membersError } = await supabase
-          .from('community_members')
-          .select(`
-            role,
-            joined_at,
-            user_id,
-            user:profiles!inner (
-              full_name,
-              avatar_url,
-              last_online
-            )
-          `)
-          .eq('community_id', communityId)
-          .order('joined_at', { ascending: true });
-        if (membersError) throw membersError;
-        const formattedMembers = membersData.map(member => {
-          const profile = Array.isArray(member.user) ? member.user[0] : member.user;
-          return {
-            user_id: member.user_id,
-            username: profile.full_name || 'Anonymous',
-            avatar_url: profile.avatar_url,
-            last_online: profile.last_online,
-            is_online: isUserOnline(profile.last_online),
-            role: member.role,
-            joined_at: member.joined_at
-          };
-        });
+       // Fetch members
+const { data: membersData, error: membersError } = await supabase
+  .from('community_members')
+  .select(`
+    role,
+    joined_at,
+    user_id,
+    user:profiles!left (
+      full_name,
+      avatar_url,
+      last_online
+    )
+  `)
+  .eq('community_id', communityId)
+  .order('joined_at', { ascending: true });
+
+if (membersError) throw membersError;
+
+const formattedMembers = membersData.map(member => {
+  // Handle the case where the LEFT JOIN returns null (no profile)
+  const profile = Array.isArray(member.user)
+    ? member.user[0] ?? null
+    : member.user;
+
+  return {
+    user_id: member.user_id,
+    username: profile?.full_name || 'Anonymous',
+    avatar_url: profile?.avatar_url || null,
+    last_online: profile?.last_online || null,
+    is_online: isUserOnline(profile?.last_online || null),
+    role: member.role,
+    joined_at: member.joined_at
+  };
+});
         setMembers(formattedMembers);
         // Fetch posts - This is the key fix for making posts visible to everyone
         const { data: postData, error: postError } = await supabase

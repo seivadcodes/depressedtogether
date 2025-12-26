@@ -11,6 +11,7 @@ import {
   X,
   Settings,
   ToggleLeft,
+  User,
 } from 'lucide-react';
 import type { 
   GriefType, 
@@ -54,8 +55,9 @@ export function DashboardUI({
   removeMedia,
   handlePostSubmit,
   toggleAcceptsCalls,
-  toggleAcceptsVideoCalls, // ← NEW prop
+  toggleAcceptsVideoCalls,
   toggleAnonymity,
+  updateFullName,
   setShowSettings,
   setShowGriefSetup,
   setNewPostText,
@@ -94,8 +96,9 @@ export function DashboardUI({
         setShowSettings={setShowSettings}
         setShowGriefSetup={setShowGriefSetup}
         toggleAcceptsCalls={toggleAcceptsCalls}
-        toggleAcceptsVideoCalls={toggleAcceptsVideoCalls} // ← pass new prop
+        toggleAcceptsVideoCalls={toggleAcceptsVideoCalls}
         toggleAnonymity={toggleAnonymity}
+        updateFullName={updateFullName}
       />
     );
   }
@@ -215,8 +218,9 @@ const SettingsModal = ({
   setShowSettings,
   setShowGriefSetup,
   toggleAcceptsCalls,
-  toggleAcceptsVideoCalls, // ← NEW prop
-  toggleAnonymity 
+  toggleAcceptsVideoCalls,
+  toggleAnonymity,
+  updateFullName
 }: {
   profile: UserProfile | null;
   preferences: UserPreferences;
@@ -224,140 +228,247 @@ const SettingsModal = ({
   setShowSettings: (show: boolean) => void;
   setShowGriefSetup: (show: boolean) => void;
   toggleAcceptsCalls: () => Promise<void>;
-  toggleAcceptsVideoCalls: () => Promise<void>; // ← NEW type
+  toggleAcceptsVideoCalls: () => Promise<void>;
   toggleAnonymity: () => Promise<void>;
-}) => (
-  <div className="min-h-screen bg-stone-50 p-4">
-    <div className="max-w-md mx-auto">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-semibold text-stone-800">Settings</h2>
-        <button
-          onClick={() => setShowSettings(false)}
-          className="text-stone-500 hover:text-stone-700"
-        >
-          ✕
-        </button>
-      </div>
+  updateFullName: (firstName: string, lastName: string) => Promise<void>;
+}) => {
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [isSavingName, setIsSavingName] = useState(false);
+  const [nameError, setNameError] = useState<string | null>(null);
 
-      {error && (
-        <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm">
-          {error}
+  useEffect(() => {
+    if (profile?.fullName) {
+      const parts = profile.fullName.split(' ');
+      setFirstName(parts[0] || '');
+      setLastName(parts.slice(1).join(' ') || '');
+    } else {
+      // Derive name from email if available
+      const email = profile?.email || '';
+      if (email) {
+        const namePart = email.split('@')[0];
+        setFirstName(namePart.charAt(0).toUpperCase() + namePart.slice(1));
+        setLastName('');
+      }
+    }
+  }, [profile]);
+
+  const handleSaveName = async () => {
+    if (!firstName.trim()) {
+      setNameError('First name is required');
+      return;
+    }
+    
+    setNameError(null);
+    setIsSavingName(true);
+    
+    try {
+      await updateFullName(firstName.trim(), lastName.trim());
+    } catch (err) {
+      setNameError(err instanceof Error ? err.message : 'Failed to update name');
+    } finally {
+      setIsSavingName(false);
+    }
+  };
+
+  const currentFullName = profile?.fullName || (profile?.email ? profile.email.split('@')[0] : 'User');
+  
+  return (
+    <div className="min-h-screen bg-stone-50 p-4">
+      <div className="max-w-md mx-auto">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-xl font-semibold text-stone-800">Settings</h2>
+          <button
+            onClick={() => setShowSettings(false)}
+            className="text-stone-500 hover:text-stone-700"
+          >
+            ✕
+          </button>
         </div>
-      )}
 
-      <div className="mb-6">
-        <h3 className="font-medium text-stone-800 mb-2">Your Grief Context</h3>
-        <p className="text-sm text-stone-600 mb-2">
-          {profile?.griefTypes.map((t: GriefType) => griefTypeLabels[t] || 'Unknown loss').join(', ') || 'Not set'}
-        </p>
-        <button
-          onClick={() => {
-            setShowGriefSetup(true);
-            setShowSettings(false);
-          }}
-          className="text-amber-600 text-sm hover:underline"
-        >
-          Edit grief types
-        </button>
-      </div>
-
-      {/* 1:1 Support Toggle */}
-      <div className="mb-6">
-        <label 
-          className="flex items-center gap-3 cursor-pointer p-3 bg-white rounded-lg border border-stone-200 hover:border-amber-300 transition"
-          onClick={toggleAcceptsCalls}
-        >
-          <div className="flex-1">
-            <div className="font-medium text-stone-800">
-              {preferences.acceptsCalls ? 'Accepting support calls' : 'Paused for now'}
-            </div>
-            <div className="text-sm text-stone-500 mt-1">
-              {preferences.acceptsCalls 
-                ? 'You\'ll appear in matches for 1:1 support'
-                : 'You won\'t be matched for calls until you turn this back on'
-              }
-            </div>
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm">
+            {error}
           </div>
-          <ToggleLeft
-            className={`w-10 h-5 rounded-full p-1 transition-colors ${
-              preferences.acceptsCalls
-                ? 'bg-amber-500 text-white'
-                : 'bg-stone-300 text-stone-500'
-            }`}
-          />
-        </label>
-      </div>
+        )}
 
-      {/* ✨ NEW: Video Calls Toggle */}
-      <div className="mb-6">
-        <label 
-          className="flex items-center gap-3 cursor-pointer p-3 bg-white rounded-lg border border-stone-200 hover:border-amber-300 transition"
-          onClick={toggleAcceptsVideoCalls}
-        >
-          <div className="flex-1">
-            <div className="font-medium text-stone-800">
-              {preferences.acceptsVideoCalls ? 'Video calls enabled' : 'Video calls disabled'}
+        {/* Display Name Section */}
+        <div className="mb-6 p-4 bg-white rounded-xl border border-stone-200">
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-amber-100 rounded-lg">
+              <User size={20} className="text-amber-700" />
             </div>
-            <div className="text-sm text-stone-500 mt-1">
-              {preferences.acceptsVideoCalls
-                ? 'You can be invited to video support sessions'
-                : 'You’ll only be matched for text or audio support'
-              }
-            </div>
-          </div>
-          <ToggleLeft
-            className={`w-10 h-5 rounded-full p-1 transition-colors ${
-              preferences.acceptsVideoCalls
-                ? 'bg-amber-500 text-white'
-                : 'bg-stone-300 text-stone-500'
-            }`}
-          />
-        </label>
-      </div>
-
-      <div className="mb-6">
-        <h3 className="font-medium text-stone-800 mb-3">Privacy Settings</h3>
-        <div className="space-y-3">
-          <label className="flex items-start gap-3 p-3 bg-white rounded-lg border border-stone-200">
-            <input
-              type="checkbox"
-              checked={preferences.isAnonymous}
-              onChange={toggleAnonymity}
-              className="form-checkbox h-5 w-5 text-amber-600 rounded mt-1"
-            />
-            <div>
-              <div className="font-medium text-stone-800">Post anonymously</div>
-              <div className="text-sm text-stone-500 mt-1">
-                Your name and profile picture won't be shown on your posts
-              </div>
-            </div>
-          </label>
-          
-          <div className="p-3 bg-amber-50 rounded-lg border border-amber-100">
-            <div className="flex items-start gap-3">
-              <div className="mt-1">
-                <Heart size={20} className="text-amber-600" />
-              </div>
-              <div>
-                <div className="font-medium text-amber-800">Your safety matters</div>
-                <div className="text-sm text-amber-700 mt-1">
-                  We never share your contact information. All connections happen within our secure platform.
+            <div className="flex-1">
+              <h3 className="font-medium text-stone-800 mb-3">Display Name</h3>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-stone-700 mb-1">
+                    First Name
+                  </label>
+                  <input
+                    type="text"
+                    value={firstName}
+                    onChange={(e) => {
+                      setFirstName(e.target.value);
+                      setNameError(null);
+                    }}
+                    className="w-full p-2.5 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                    placeholder="First name"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-stone-700 mb-1">
+                    Last Name
+                  </label>
+                  <input
+                    type="text"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    className="w-full p-2.5 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                    placeholder="Last name (optional)"
+                  />
+                </div>
+                
+                {nameError && (
+                  <div className="text-red-600 text-sm mt-1">{nameError}</div>
+                )}
+                
+                <button
+                  onClick={handleSaveName}
+                  disabled={!firstName.trim() || isSavingName}
+                  className={`w-full py-2.5 rounded-lg font-medium transition ${
+                    firstName.trim() && !isSavingName
+                      ? 'bg-amber-500 text-white hover:bg-amber-600'
+                      : 'bg-stone-200 text-stone-400 cursor-not-allowed'
+                  }`}
+                >
+                  {isSavingName ? 'Saving...' : 'Update Display Name'}
+                </button>
+                
+                <div className="text-xs text-stone-500 mt-2">
+                  This name will be used across the platform. You can change it anytime.
                 </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <button
-        onClick={() => setShowSettings(false)}
-        className="w-full py-3 bg-stone-800 text-white rounded-lg font-medium hover:bg-stone-900 transition"
-      >
-        Done
-      </button>
+        <div className="mb-6">
+          <h3 className="font-medium text-stone-800 mb-2">Your Grief Context</h3>
+          <p className="text-sm text-stone-600 mb-2">
+            {profile?.griefTypes.map((t: GriefType) => griefTypeLabels[t] || 'Unknown loss').join(', ') || 'Not set'}
+          </p>
+          <button
+            onClick={() => {
+              setShowGriefSetup(true);
+              setShowSettings(false);
+            }}
+            className="text-amber-600 text-sm hover:underline"
+          >
+            Edit grief types
+          </button>
+        </div>
+
+        {/* 1:1 Support Toggle */}
+        <div className="mb-6">
+          <label 
+            className="flex items-center gap-3 cursor-pointer p-3 bg-white rounded-lg border border-stone-200 hover:border-amber-300 transition"
+            onClick={toggleAcceptsCalls}
+          >
+            <div className="flex-1">
+              <div className="font-medium text-stone-800">
+                {preferences.acceptsCalls ? 'Accepting support calls' : 'Paused for now'}
+              </div>
+              <div className="text-sm text-stone-500 mt-1">
+                {preferences.acceptsCalls 
+                  ? 'You\'ll appear in matches for 1:1 support'
+                  : 'You won\'t be matched for calls until you turn this back on'
+                }
+              </div>
+            </div>
+            <ToggleLeft
+              className={`w-10 h-5 rounded-full p-1 transition-colors ${
+                preferences.acceptsCalls
+                  ? 'bg-amber-500 text-white'
+                  : 'bg-stone-300 text-stone-500'
+              }`}
+            />
+          </label>
+        </div>
+
+        {/* Video Calls Toggle */}
+        <div className="mb-6">
+          <label 
+            className="flex items-center gap-3 cursor-pointer p-3 bg-white rounded-lg border border-stone-200 hover:border-amber-300 transition"
+            onClick={toggleAcceptsVideoCalls}
+          >
+            <div className="flex-1">
+              <div className="font-medium text-stone-800">
+                {preferences.acceptsVideoCalls ? 'Video calls enabled' : 'Video calls disabled'}
+              </div>
+              <div className="text-sm text-stone-500 mt-1">
+                {preferences.acceptsVideoCalls
+                  ? 'You can be invited to video support sessions'
+                  : 'You’ll only be matched for text or audio support'
+                }
+              </div>
+            </div>
+            <ToggleLeft
+              className={`w-10 h-5 rounded-full p-1 transition-colors ${
+                preferences.acceptsVideoCalls
+                  ? 'bg-amber-500 text-white'
+                  : 'bg-stone-300 text-stone-500'
+              }`}
+            />
+          </label>
+        </div>
+
+        <div className="mb-6">
+          <h3 className="font-medium text-stone-800 mb-3">Privacy Settings</h3>
+          <div className="space-y-3">
+            <label className="flex items-start gap-3 p-3 bg-white rounded-lg border border-stone-200">
+              <input
+                type="checkbox"
+                checked={preferences.isAnonymous}
+                onChange={toggleAnonymity}
+                className="form-checkbox h-5 w-5 text-amber-600 rounded mt-1"
+              />
+              <div>
+                <div className="font-medium text-stone-800">Post anonymously</div>
+                <div className="text-sm text-stone-500 mt-1">
+                  Your name and profile picture won't be shown on your posts
+                </div>
+              </div>
+            </label>
+            
+            <div className="p-3 bg-amber-50 rounded-lg border border-amber-100">
+              <div className="flex items-start gap-3">
+                <div className="mt-1">
+                  <Heart size={20} className="text-amber-600" />
+                </div>
+                <div>
+                  <div className="font-medium text-amber-800">Your safety matters</div>
+                  <div className="text-sm text-amber-700 mt-1">
+                    We never share your contact information. All connections happen within our secure platform.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <button
+          onClick={() => setShowSettings(false)}
+          className="w-full py-3 bg-stone-800 text-white rounded-lg font-medium hover:bg-stone-900 transition"
+        >
+          Done
+        </button>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const ProfileContextSection = ({ 
   profile, 
@@ -367,40 +478,51 @@ const ProfileContextSection = ({
   profile: UserProfile | null;
   setShowSettings: (show: boolean) => void;
   setShowGriefSetup: (show: boolean) => void;
-}) => (
-  <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-4 border border-stone-200">
-    <div className="flex justify-between items-start">
-      <div>
-        <h2 className="text-sm font-medium text-stone-600 mb-1">Your grief context</h2>
-        <div className="flex flex-wrap gap-2">
-          {profile?.griefTypes?.map((type) => (
-            <span
-              key={type}
-              className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 text-sm px-3 py-1.5 rounded-full border border-amber-200"
-            >
-              <Heart size={12} className="text-amber-600" />
-              {griefTypeLabels[type]}
-            </span>
-          ))}
+}) => {
+  // Derive display name with fallback
+  const displayName = profile?.fullName || (profile?.email ? profile.email.split('@')[0] : 'Friend');
+  const firstName = displayName.split(' ')[0];
+
+  return (
+    <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-4 border border-stone-200">
+      <div className="flex justify-between items-start mb-4">
+        <div>
+          <h2 className="text-lg font-medium text-stone-800 mb-1">
+            Welcome back, {firstName}
+          </h2>
+          <p className="text-sm text-stone-600">Your grief context</p>
         </div>
+        <button
+          onClick={() => setShowSettings(true)}
+          className="p-2.5 text-stone-600 hover:text-stone-900 rounded-full hover:bg-stone-200 transition-colors"
+          aria-label="Settings"
+        >
+          <Settings size={20} />
+        </button>
       </div>
+      
+      <div className="flex flex-wrap gap-2 mb-4">
+        {profile?.griefTypes?.map((type) => (
+          <span
+            key={type}
+            className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 text-sm px-3 py-1.5 rounded-full border border-amber-200"
+          >
+            <Heart size={12} className="text-amber-600" />
+            {griefTypeLabels[type]}
+          </span>
+        ))}
+      </div>
+      
       <button
-        onClick={() => setShowSettings(true)}
-        className="p-2.5 text-stone-600 hover:text-stone-900 rounded-full hover:bg-stone-200 transition-colors"
-        aria-label="Settings"
+        onClick={() => setShowGriefSetup(true)}
+        className="text-xs text-amber-600 hover:underline flex items-center gap-1"
       >
-        <Settings size={20} />
+        <Edit size={12} />
+        Edit or add another loss
       </button>
     </div>
-    <button
-      onClick={() => setShowGriefSetup(true)}
-      className="mt-3 text-xs text-amber-600 hover:underline flex items-center gap-1"
-    >
-      <Edit size={12} />
-      Edit or add another loss
-    </button>
-  </div>
-);
+  );
+};
 
 const CommunityPresence = ({ onlineCount }: { onlineCount: number }) => (
   <div className="text-center">
@@ -445,7 +567,9 @@ const NewPostForm = ({
             className="w-full h-full rounded-full object-cover"
           />
         ) : (
-          <MessageCircle size={18} className="text-amber-600" />
+          <div className="text-amber-700 font-medium text-sm">
+            {(profile?.fullName || 'U').charAt(0).toUpperCase()}
+          </div>
         )}
       </div>
       <div className="flex-1">

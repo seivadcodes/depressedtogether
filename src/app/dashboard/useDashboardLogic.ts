@@ -21,11 +21,13 @@ export interface UserProfile {
   id: string;
   griefTypes: GriefType[];
   avatarUrl?: string;
+  fullName: string;      // Added full name
+  email?: string;       // Added email for fallback
 }
 
 export interface UserPreferences {
   acceptsCalls: boolean;
-  acceptsVideoCalls: boolean; // ← NEW
+  acceptsVideoCalls: boolean;
   acceptFromGenders?: ('male' | 'female' | 'nonbinary' | 'any')[];
   acceptFromCountries?: string[];
   acceptFromLanguages?: string[];
@@ -70,8 +72,9 @@ export interface DashboardUIProps {
   removeMedia: (index: number) => void;
   handlePostSubmit: () => Promise<void>;
   toggleAcceptsCalls: () => Promise<void>;
-  toggleAcceptsVideoCalls: () => Promise<void>; // ← NEW
+  toggleAcceptsVideoCalls: () => Promise<void>;
   toggleAnonymity: () => Promise<void>;
+  updateFullName: (firstName: string, lastName: string) => Promise<void>; // New function
   setShowSettings: (show: boolean) => void;
   setShowGriefSetup: (show: boolean) => void;
   setNewPostText: (text: string) => void;
@@ -87,7 +90,7 @@ export function useDashboardLogic(): DashboardUIProps {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [preferences, setPreferences] = useState<UserPreferences>({
     acceptsCalls: true,
-    acceptsVideoCalls: false, // ← disabled by default
+    acceptsVideoCalls: false,
     acceptFromGenders: ['any'],
     acceptFromCountries: [],
     acceptFromLanguages: [],
@@ -121,20 +124,40 @@ export function useDashboardLogic(): DashboardUIProps {
         .single();
 
       if (profileError || !data) {
+        // Create initial profile if it doesn't exist
+        const { error: insertError } = await supabase
+          .from('profiles')
+          .insert({
+            id: session.user.id,
+            email: session.user.email,
+            full_name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0],
+            created_at: new Date().toISOString(),
+          });
+
+        if (insertError) {
+          console.error('Profile creation error:', insertError);
+          setError('Failed to create profile. Please try again.');
+          router.push('/auth');
+          return;
+        }
+
         setShowGriefSetup(true);
         setIsLoading(false);
         return;
       }
 
+      // Set up profile with full name and email
       setProfile({
         id: data.id,
         griefTypes: data.grief_types || [],
         avatarUrl: data.avatar_url,
+        fullName: data.full_name || session.user.email?.split('@')[0] || 'Friend',
+        email: session.user.email || data.email,
       });
 
       setPreferences({
         acceptsCalls: data.accepts_calls ?? true,
-        acceptsVideoCalls: data.accepts_video_calls ?? false, // ← load from DB
+        acceptsVideoCalls: data.accepts_video_calls ?? false,
         acceptFromGenders: data.accept_from_genders || ['any'],
         acceptFromCountries: data.accept_from_countries || [],
         acceptFromLanguages: data.accept_from_languages || [],
@@ -382,7 +405,6 @@ export function useDashboardLogic(): DashboardUIProps {
     }
   };
 
-  // ← NEW FUNCTION
   const toggleAcceptsVideoCalls = async () => {
     try {
       const newValue = !preferences.acceptsVideoCalls;
@@ -402,6 +424,32 @@ export function useDashboardLogic(): DashboardUIProps {
     } catch (err) {
       console.error('Failed to update anonymity preference:', err);
       setError('Failed to update settings. Please try again.');
+    }
+  };
+
+  // New function to update full name
+  const updateFullName = async (firstName: string, lastName: string) => {
+    const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
+    
+    if (!firstName.trim()) {
+      throw new Error('First name is required');
+    }
+
+    try {
+      // Update in database
+      await saveProfileToDB({ full_name: fullName });
+      
+      // Update local state
+      setProfile(prev => prev ? { 
+        ...prev, 
+        fullName 
+      } : null);
+      
+      setError(null);
+    
+    } catch (err) {
+      console.error('Name update failed:', err);
+      throw new Error('Failed to update name. Please try again.');
     }
   };
 
@@ -434,8 +482,9 @@ export function useDashboardLogic(): DashboardUIProps {
     removeMedia,
     handlePostSubmit,
     toggleAcceptsCalls,
-    toggleAcceptsVideoCalls, // ← export new function
+    toggleAcceptsVideoCalls,
     toggleAnonymity,
+    updateFullName, // Expose the new function
     setShowSettings,
     setShowGriefSetup,
     setNewPostText,
