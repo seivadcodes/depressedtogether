@@ -162,124 +162,106 @@ export default function CommunityDetailPage() {
 
   // Fetch comments for a post
   const fetchComments = async (postId: string) => {
-    if (!postId) return;
-    
-    setCommentLoading(prev => ({ ...prev, [postId]: true }));
-    
-    try {
-      const { data, error } = await supabase
-        .from('community_post_comments')
-        .select(`
-          id,
-          content,
-          created_at,
-          post_id,
-          user_id,
-          user:profiles!inner (
-            full_name,
-            avatar_url
-          )
-        `)
-        .eq('post_id', postId)
-        .order('created_at', { ascending: true });
-      
-      if (error) throw error;
-      
-      const formattedComments = data.map(comment => {
-        const userData = Array.isArray(comment.user) ? comment.user[0] : comment.user;
-        return {
-          id: comment.id,
-          content: comment.content,
-          created_at: comment.created_at,
-          user_id: comment.user_id,
-          username: userData?.full_name || 'Anonymous',
-          avatar_url: userData?.avatar_url || null,
-          post_id: comment.post_id
-        };
-      });
-      
-      setComments(prev => ({
-        ...prev,
-        [postId]: formattedComments
-      }));
-      
-      // Add to expanded posts
-      if (!expandedPosts.includes(postId)) {
-        setExpandedPosts(prev => [...prev, postId]);
-      }
-    } catch (error: any) {
-      console.error('Error fetching comments:', error);
-      toast.error('Failed to load comments');
-    } finally {
-      setCommentLoading(prev => ({ ...prev, [postId]: false }));
-    }
-  };
+  if (!postId) return;
+  setCommentLoading(prev => ({ ...prev, [postId]: true }));
+  try {
+    const { data, error } = await supabase
+      .from('community_post_comments_with_profiles') // 👈 CHANGED: Use the view
+      .select('*') // 👈 CHANGED: No need for complex select syntax
+      .eq('post_id', postId)
+      .order('created_at', { ascending: true });
 
-  // Add a new comment to a post
-  const addComment = async (postId: string, content: string) => {
-    if (!user || !content.trim() || !postId) return;
-    
-    setAddingComment(prev => ({ ...prev, [postId]: true }));
-    
-    try {
-      const { data, error } = await supabase
-        .from('community_post_comments')
-        .insert({
-          post_id: postId,
-          user_id: user.id,
-          content: content.trim(),
-          created_at: new Date().toISOString()
-        })
-        .select(`
-          id,
-          content,
-          created_at,
-          post_id,
-          user_id,
-          user:profiles!inner (
-            full_name,
-            avatar_url
-          )
-        `)
-        .single();
-      
-      if (error) throw error;
-      
-      const userData = Array.isArray(data.user) ? data.user[0] : data.user;
-      const newComment = {
-        id: data.id,
-        content: data.content,
-        created_at: data.created_at,
-        user_id: data.user_id,
-        username: userData?.full_name || 'Anonymous',
-        avatar_url: userData?.avatar_url || null,
-        post_id: data.post_id
-      };
-      
-      // Update comments state
-      setComments(prev => ({
-        ...prev,
-        [postId]: [...(prev[postId] || []), newComment]
-      }));
-      
-      // Update posts state to increment comments_count
-      setPosts(prev => prev.map(post => 
-        post.id === postId 
-          ? { ...post, comments_count: (post.comments_count || 0) + 1 } 
-          : post
-      ));
-      
-      // Clear the input
-      setNewCommentContent(prev => ({ ...prev, [postId]: '' }));
-      
-      toast.success('Comment added successfully');
-    } catch (error: any) {
-      console.error('Error adding comment:', error);
-      toast.error('Failed to add comment');
-    } finally {
-      setAddingComment(prev => ({ ...prev, [postId]: false }));
+    if (error) throw error;
+
+    // Format comments — now username and avatar_url are direct fields
+    const formattedComments = data.map(comment => ({
+      id: comment.id,
+      content: comment.content,
+      created_at: comment.created_at,
+      user_id: comment.user_id,
+      username: comment.username || 'Anonymous', // 👈 Direct field from view
+      avatar_url: comment.avatar_url || null,   // 👈 Direct field from view
+      post_id: comment.post_id
+    }));
+
+    setComments(prev => ({
+      ...prev,
+      [postId]: formattedComments
+    }));
+
+    // Add to expanded posts
+    if (!expandedPosts.includes(postId)) {
+      setExpandedPosts(prev => [...prev, postId]);
     }
-  };
+  } catch (error: any) {
+    console.error('Error fetching comments:', error);
+    toast.error('Failed to load comments');
+  } finally {
+    setCommentLoading(prev => ({ ...prev, [postId]: false }));
+  }
+};
+  // Add a new comment to a post
+ const addComment = async (postId: string, content: string) => {
+  if (!user || !content.trim() || !postId) return;
+  setAddingComment(prev => ({ ...prev, [postId]: true }));
+  try {
+    // Step 1: Insert the comment
+    const { data: insertData, error: insertError } = await supabase
+      .from('community_post_comments')
+      .insert({
+        post_id: postId,
+        user_id: user.id,
+        content: content.trim(),
+        created_at: new Date().toISOString()
+      })
+      .select('id, content, created_at, post_id, user_id')
+      .single();
+
+    if (insertError) throw insertError;
+
+    // Step 2: Fetch the newly inserted comment WITH profile info via the view
+    const { data: commentWithProfile, error: profileError } = await supabase
+      .from('community_post_comments_with_profiles')
+      .select('*')
+      .eq('id', insertData.id)
+      .single();
+
+    if (profileError) throw profileError;
+
+    // Format the new comment
+    const newComment = {
+      id: commentWithProfile.id,
+      content: commentWithProfile.content,
+      created_at: commentWithProfile.created_at,
+      user_id: commentWithProfile.user_id,
+      username: commentWithProfile.username || 'Anonymous', // 👈 From view
+      avatar_url: commentWithProfile.avatar_url || null,   // 👈 From view
+      post_id: commentWithProfile.post_id
+    };
+
+    // Update comments state
+    setComments(prev => ({
+      ...prev,
+      [postId]: [...(prev[postId] || []), newComment]
+    }));
+
+    // Update posts state to increment comments_count
+    setPosts(prev => prev.map(post =>
+      post.id === postId
+        ? { ...post, comments_count: (post.comments_count || 0) + 1 }
+        : post
+    ));
+
+    // Clear the input
+    setNewCommentContent(prev => ({ ...prev, [postId]: '' }));
+    toast.success('Comment added successfully');
+  } catch (error: any) {
+    console.error('Error adding comment:', error);
+    toast.error('Failed to add comment');
+  } finally {
+    setAddingComment(prev => ({ ...prev, [postId]: false }));
+  }
+};
 
   // Delete a comment
   const deleteComment = async (commentId: string, postId: string) => {
