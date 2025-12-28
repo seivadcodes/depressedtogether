@@ -29,7 +29,7 @@ export default function CallsPage() {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const audioElementsRef = useRef<HTMLAudioElement[]>([]);
 
-  // Cleanup audio elements on unmount
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       audioElementsRef.current.forEach(el => {
@@ -110,22 +110,16 @@ export default function CallsPage() {
         }, 2000);
       });
 
-      // Handle local disconnect (e.g., network loss)
+      // Handle room disconnect (e.g., network loss)
       newRoom.on(RoomEvent.Disconnected, () => {
         setCallStatus('ended');
         setTimeout(() => endCall(), 2000);
       });
 
-      newRoom.on(RoomEvent.Connected, () => {
-        setCallStatus('connected');
-        // Start timer
-        timerRef.current = setInterval(() => {
-          setCallDuration(prev => prev + 1);
-        }, 1000);
-      });
+      // NOTE: Timer is NOT started here anymore
 
-      newRoom.on(RoomEvent.TrackSubscribed, (track, _, participant) => {
-        handleTrackSubscribed(track, participant);
+      newRoom.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
+        handleTrackSubscribed(track, publication, participant);
       });
 
       await newRoom.connect(url, token);
@@ -153,11 +147,21 @@ export default function CallsPage() {
     }
   };
 
-  const handleTrackSubscribed = (track: any, participant: any) => {
+  const handleTrackSubscribed = (track: any, _publication: any, participant: any) => {
     if (track.kind === Track.Kind.Audio) {
+      // Start timer and update status ONLY when we receive the first remote audio track
+      if (callStatus !== 'connected') {
+        setCallStatus('connected');
+        setCallDuration(0);
+        if (timerRef.current) clearInterval(timerRef.current);
+        timerRef.current = setInterval(() => {
+          setCallDuration(prev => prev + 1);
+        }, 1000);
+      }
+
       const element = track.attach();
       element.volume = 0.8;
-      element.style.display = 'none'; // Don't show audio element
+      element.style.display = 'none';
       document.body.appendChild(element);
       audioElementsRef.current.push(element);
       
@@ -203,6 +207,7 @@ export default function CallsPage() {
     });
     
     setCallStatus('connecting');
+    setCallDuration(0);
     await connectToRoom(roomName, 'caller');
   };
 
@@ -218,6 +223,7 @@ export default function CallsPage() {
     
     setIncomingCall(null);
     setCallStatus('connecting');
+    setCallDuration(0);
     await connectToRoom(incomingCall.room_name, 'callee');
   };
 
@@ -237,7 +243,6 @@ export default function CallsPage() {
     setCallDuration(0);
   };
 
-  // Format seconds to mm:ss
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -306,7 +311,6 @@ export default function CallsPage() {
             </button>
           </div>
 
-          {/* Big red End Call button */}
           <div className="flex justify-center">
             <button
               onClick={endCall}

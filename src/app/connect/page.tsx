@@ -89,6 +89,9 @@ export default function ConnectPage() {
   const [acceptingRequestId, setAcceptingRequestId] = useState<string | null>(null);
   const [matchedRequests, setMatchedRequests] = useState<Record<string, boolean>>({});
 
+  // ✅ MODIFIED: Added activeSessionId state
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+
   useEffect(() => {
     if (!user) return;
 
@@ -424,16 +427,12 @@ export default function ConnectPage() {
         
       if (participantError) throw participantError;
 
+      // ✅ MODIFIED: Replaced redirect with activeSessionId state
+      setActiveSessionId(session.id);
       setShowPostRequestModal(false);
       setRequestDescription('');
       setGriefType('');
-      
-      setError('Your support request has been posted! You\'ll be notified when someone accepts.');
-
-      // Redirect to call page after 5 seconds to show pending state
-      setTimeout(() => {
-        router.push(`/call/${session.id}`);
-      }, 5000);
+      setError(null); // Clear any prior errors
     } catch (err) {
       console.error('Error posting request:', err);
       setError(err instanceof Error ? err.message : 'Failed to post your request. Please try again.');
@@ -517,9 +516,11 @@ export default function ConnectPage() {
             <Button 
               onClick={() => setShowPostRequestModal(true)}
               className="bg-amber-500 hover:bg-amber-600 text-white flex items-center gap-2"
+              // ✅ MODIFIED: Disable button when active request exists
+              disabled={!!activeSessionId}
             >
               <Plus className="h-4 w-4" />
-              Ask for Support
+              {activeSessionId ? 'Request Pending' : 'Ask for Support'}
             </Button>
           </div>
         </div>
@@ -538,6 +539,36 @@ export default function ConnectPage() {
           <div className="bg-green-50 p-4 rounded-lg text-green-700 text-center">
             <CheckCircle className="h-5 w-5 text-green-500 inline-block mr-2" />
             <span>Your call is being set up! You'll be connected shortly...</span>
+          </div>
+        )}
+
+        {/* ✅ MODIFIED: Added waiting UI for active session */}
+        {activeSessionId && (
+          <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded mb-8">
+            <div className="flex items-center gap-2 text-amber-800">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <span className="font-medium">Waiting for someone to accept your request...</span>
+            </div>
+            <p className="text-sm text-amber-700 mt-1">
+              You’ll be notified as soon as someone connects. You can also browse incoming requests below.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-3 text-amber-700 border-amber-300 hover:bg-amber-100"
+              onClick={async () => {
+                // Cancel the request in the database
+                await supabase
+                  .from('support_requests')
+                  .update({ status: 'cancelled' })
+                  .eq('session_id', activeSessionId)
+                  .eq('user_id', user!.id);
+
+                setActiveSessionId(null);
+              }}
+            >
+              Cancel Request
+            </Button>
           </div>
         )}
 
@@ -650,8 +681,10 @@ export default function ConnectPage() {
                           setShowPostRequestModal(true);
                         }
                       }}
+                      // ✅ MODIFIED: Disable button when active request exists
+                      disabled={!!activeSessionId}
                     >
-                      Connect Now
+                      {activeSessionId ? 'Request Pending' : 'Connect Now'}
                     </Button>
                   )}
                 </CardContent>
@@ -689,6 +722,8 @@ export default function ConnectPage() {
                           ? 'border-amber-500 bg-amber-50'
                           : 'border-stone-300 hover:border-amber-300'
                       }`}
+                      // ✅ MODIFIED: Disable buttons when active request exists
+                      disabled={!!activeSessionId}
                     >
                       <div className="font-medium text-stone-800 mb-1 flex items-center">
                         <MessageCircle className="h-4 w-4 mr-2" />
@@ -704,6 +739,8 @@ export default function ConnectPage() {
                           ? 'border-amber-500 bg-amber-50'
                           : 'border-stone-300 hover:border-amber-300'
                       }`}
+                      // ✅ MODIFIED: Disable buttons when active request exists
+                      disabled={!!activeSessionId}
                     >
                       <div className="font-medium text-stone-800 mb-1 flex items-center">
                         <UsersIcon className="h-4 w-4 mr-2" />
@@ -723,6 +760,8 @@ export default function ConnectPage() {
                     value={griefType}
                     onChange={(e) => setGriefType(e.target.value as GriefType)}
                     className="w-full p-2.5 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                    // ✅ MODIFIED: Disable select when active request exists
+                    disabled={!!activeSessionId}
                   >
                     <option value="">Select a grief experience</option>
                     {(Object.keys(griefTypeLabels) as GriefType[]).map((type) => (
@@ -747,6 +786,8 @@ export default function ConnectPage() {
                         : "I'd like to join a group to share about coping with holidays after loss..."
                     }
                     className="min-h-[100px] w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-sm placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                    // ✅ MODIFIED: Disable textarea when active request exists
+                    disabled={!!activeSessionId}
                   />
                   <p className="text-xs text-stone-500 mt-1">
                     Be as specific or general as you're comfortable with. This helps us match you with the right person.
@@ -758,12 +799,14 @@ export default function ConnectPage() {
                     variant="outline"
                     onClick={() => setShowPostRequestModal(false)}
                     className="border-stone-300 text-stone-700 hover:bg-stone-100"
+                    // ✅ MODIFIED: Disable cancel when active request exists
+                    disabled={!!activeSessionId}
                   >
                     Cancel
                   </Button>
                   <Button
                     onClick={postSupportRequest}
-                    disabled={!griefType || !requestDescription.trim() || isPostingRequest}
+                    disabled={!griefType || !requestDescription.trim() || isPostingRequest || !!activeSessionId}
                     className="bg-amber-500 hover:bg-amber-600 text-white min-w-[120px]"
                   >
                     {isPostingRequest ? (
