@@ -1,331 +1,330 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
+import { Room, RoomEvent, Track, ConnectionState } from 'livekit-client';
+import { useAuth } from '@/hooks/useAuth';
 
-// Minimal user type for calling purposes
-interface CallUser {
+type Profile = {
   id: string;
-  fullName: string;
-}
-
-// Call status types match your Supabase 'calls' table
-type CallStatus = 'pending' | 'accepted' | 'rejected' | 'ended';
+  username?: string;
+  full_name?: string;
+};
 
 export default function CallPage() {
-  const supabase = createClient();
+  const { user, loading: authLoading, signOut: authSignOut } = useAuth();
   const router = useRouter();
-  
-  const [currentUser, setCurrentUser] = useState<{ id: string; fullName: string } | null>(null);
-  const [users, setUsers] = useState<CallUser[]>([]);
-  const [selectedUserId, setSelectedUserId] = useState<string>('');
-  
-  const [incomingCall, setIncomingCall] = useState<{
-    callerId: string;
-    callerName: string;
-    callId: string;
-  } | null>(null);
-  
-  const [activeCall, setActiveCall] = useState<{
-    peerName: string;
-    isCaller: boolean;
-  } | null>(null);
-  
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [otherUsers, setOtherUsers] = useState<Profile[]>([]);
+  const [targetUser, setTargetUser] = useState<string>('');
+  const [incomingCall, setIncomingCall] = useState<{ callerId: string; callId: string } | null>(null);
+  const [room, setRoom] = useState<Room | null>(null);
+  const [isInCall, setIsInCall] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Initialize: check auth + load current user + other users
+  const supabase = createClient();
+
+  // Redirect if not authenticated
   useEffect(() => {
-    const init = async () => {
-      const { data: { session }, error: authError } = await supabase.auth.getSession();
-      
-      if (authError || !session?.user) {
-        router.push('/auth');
-        return;
-      }
+    if (!authLoading && !user) {
+      console.warn('Not authenticated. Redirecting to /auth.');
+      router.push('/auth');
+    }
+  }, [user, authLoading, router]);
 
-      // Fetch current user profile
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('id, full_name')
-        .eq('id', session.user.id)
-        .single();
+  // Fetch profile and other users
+  useEffect(() => {
+    if (!user) return;
 
-      if (profileError || !profile) {
-        setError('Failed to load your profile.');
-        setIsLoading(false);
-        return;
-      }
+    const fetchProfileAndUsers = async () => {
+      try {
+        // Fetch current user's profile
+        const { data: userProfile, error: profileError } = await supabase
+          .from('profiles')
+          .select('id, username, full_name')
+          .eq('id', user.id)
+          .single();
 
-      const currentUserData = {
-        id: profile.id,
-        fullName: profile.full_name || 'Friend',
-      };
-      setCurrentUser(currentUserData);
+        if (profileError) {
+          console.error('Failed to fetch profile:', profileError);
+          return;
+        }
 
-      // Fetch other users (limit for simplicity)
-      const { data: otherUsers, error: usersError } = await supabase
-        .from('profiles')
-        .select('id, full_name')
-        .neq('id', session.user.id)
-        .limit(20);
+        const displayName = userProfile.username || userProfile.full_name || user.email?.split('@')[0] || 'User';
+        setProfile({ ...userProfile, username: displayName });
 
-      if (!usersError && otherUsers) {
-        setUsers(
-          otherUsers
-            .filter((u: any) => u.full_name) // skip incomplete profiles
-            .map((u: any) => ({
-              id: u.id,
-              fullName: u.full_name,
+        // Fetch other users (for display)
+        const { data: users, error: usersError } = await supabase
+          .from('profiles')
+          .select('id, username, full_name')
+          .neq('id', user.id);
+
+        if (usersError) {
+          console.error('Failed to fetch other users:', usersError);
+          setOtherUsers([]);
+        } else {
+          setOtherUsers(
+            users.map((u) => ({
+              ...u,
+              username: u.username || u.full_name || 'Anonymous',
             }))
-        );
+          );
+        }
+      } catch (err) {
+        console.error('Unexpected error in profile fetch:', err);
+      } finally {
+        setLoading(false);
       }
-
-      setIsLoading(false);
     };
 
-    init();
-  }, [router]);
+    fetchProfileAndUsers();
+  }, [user, supabase]);
 
-  // Listen for incoming calls via Supabase Realtime
+  // Set up Supabase call signaling
   useEffect(() => {
-    if (!currentUser) return;
+    if (!user?.id) return;
 
     const channel = supabase
-      .channel(`private-call-${currentUser.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'calls',
-          filter: `callee_id=eq.${currentUser.id},status=eq.pending`,
-        },
-        (payload) => {
-          const newCall = payload.new as {
-            id: string;
-            caller_id: string;
-            callee_id: string;
-            status: CallStatus;
-          };
-
-          // Find caller's name from loaded users
-          const caller = users.find((u) => u.id === newCall.caller_id);
-          if (caller) {
-            setIncomingCall({
-              callerId: newCall.caller_id,
-              callerName: caller.fullName,
-              callId: newCall.id,
-            });
-          }
+      .channel('calls')
+      .on('broadcast', { event: 'call' }, (payload) => {
+        if (payload.payload.targetId === user.id && !isInCall) {
+          console.log('Incoming call:', payload.payload);
+          setIncomingCall({
+            callerId: payload.payload.callerId,
+            callId: payload.payload.callId,
+          });
         }
-      )
+      })
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [currentUser, users]);
-
-  const acceptCall = async () => {
-    if (!incomingCall) return;
-
-    try {
-      const { error: updateError } = await supabase
-        .from('calls')
-        .update({ status: 'accepted' })
-        .eq('id', incomingCall.callId);
-
-      if (updateError) throw updateError;
-
-      setActiveCall({
-        peerName: incomingCall.callerName,
-        isCaller: false,
-      });
-      setIncomingCall(null);
-    } catch (err) {
-      console.error('Accept call error:', err);
-      setError('Failed to accept call. Please try again.');
-    }
-  };
-
-  const rejectCall = async () => {
-    if (!incomingCall) return;
-
-    try {
-      const { error: updateError } = await supabase
-        .from('calls')
-        .update({ status: 'rejected' })
-        .eq('id', incomingCall.callId);
-
-      if (updateError) throw updateError;
-
-      setIncomingCall(null);
-    } catch (err) {
-      console.error('Reject call error:', err);
-      setError('Failed to reject call.');
-    }
-  };
+  }, [user?.id, isInCall, supabase]);
 
   const startCall = async () => {
-    if (!currentUser || !selectedUserId) return;
+    if (!user || !targetUser) return;
+
+    const callId = `${user.id}-${targetUser}-${Date.now()}`;
+    console.log('Starting call:', { callerId: user.id, targetId: targetUser, callId });
+
+    await supabase.channel('calls').send({
+      type: 'broadcast',
+      event: 'call',
+      payload: { callerId: user.id, targetId: targetUser, callId },
+    });
+
+    joinRoom(callId);
+  };
+
+  const joinRoom = async (callId: string) => {
+    if (!user?.id) {
+      console.error('Cannot join room: user.id missing');
+      setIsInCall(false);
+      return;
+    }
+
+    const livekitUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
+    if (!livekitUrl) {
+      alert('LiveKit URL missing in environment. Check NEXT_PUBLIC_LIVEKIT_URL.');
+      setIsInCall(false);
+      return;
+    }
+
+    const newRoom = new Room();
+    setRoom(newRoom);
+    setIsInCall(true);
+
+    newRoom.on(RoomEvent.TrackSubscribed, (track) => {
+      if (track.kind === Track.Kind.Audio) {
+        const element = track.attach();
+        element.autoplay = true;
+        element.muted = false;
+        element.volume = 1.0;
+
+        if (remoteAudioRef.current) {
+          document.body.removeChild(remoteAudioRef.current);
+        }
+        remoteAudioRef.current = element;
+        document.body.appendChild(element);
+        console.log('Remote audio attached');
+      }
+    });
+
+    newRoom.on(RoomEvent.Disconnected, () => {
+      console.log('Room disconnected');
+      if (remoteAudioRef.current) {
+        document.body.removeChild(remoteAudioRef.current);
+        remoteAudioRef.current = null;
+      }
+      setIsInCall(false);
+    });
+
+    newRoom.on(RoomEvent.ConnectionStateChanged, (state: ConnectionState) => {
+      console.log('LiveKit connection state:', state);
+    });
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Not authenticated');
+      console.log('Requesting LiveKit token for room:', callId);
+      const tokenRes = await fetch('/api/livekit/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          room: callId,
+          identity: user.id, // ✅ using stable user.id
+        }),
+      });
 
-      const { data: newCall, error: insertError } = await supabase
-        .from('calls')
-        .insert({
-          caller_id: currentUser.id,
-          callee_id: selectedUserId,
-          status: 'pending',
-        })
-        .select()
-        .single();
+      if (!tokenRes.ok) {
+        const errorText = await tokenRes.text();
+        console.error('Token fetch failed:', tokenRes.status, errorText);
+        alert(`Failed to get call token (${tokenRes.status}). Check console.`);
+        setIsInCall(false);
+        return;
+      }
 
-      if (insertError) throw insertError;
+      const { token } = await tokenRes.json();
+      if (!token) throw new Error('No token in response');
 
-      // Simulate callee accepting after short delay (replace with real signaling in production)
-      setTimeout(() => {
-        const callee = users.find((u) => u.id === selectedUserId);
-        if (callee) {
-          setActiveCall({
-            peerName: callee.fullName,
-            isCaller: true,
-          });
-        }
-      }, 1500);
-    } catch (err) {
-      console.error('Start call error:', err);
-      setError('Unable to start call. User may be offline.');
+      console.log('Connecting to LiveKit...');
+      await newRoom.connect(livekitUrl, token);
+
+      // Publish audio
+      const tracks = await newRoom.localParticipant.createTracks({ audio: true });
+      tracks.forEach((track) => {
+        newRoom.localParticipant.publishTrack(track);
+        console.log('Published track:', track.kind);
+      });
+    } catch (err: any) {
+      console.error('joinRoom error:', err);
+      const msg = err.message || 'Unknown error';
+      alert(`Call failed: ${msg}\n\nSee browser console for details.`);
+      setIsInCall(false);
+    }
+  };
+
+  const acceptCall = () => {
+    if (incomingCall) {
+      joinRoom(incomingCall.callId);
+      setIncomingCall(null);
     }
   };
 
   const endCall = () => {
-    // In real app: update call status + clean up media streams
-    setActiveCall(null);
+    if (room) {
+      room.disconnect();
+    }
   };
 
-  // ---- UI Rendering ----
-  if (isLoading) {
+  const declineCall = () => setIncomingCall(null);
+
+  const handleSignOut = async () => {
+    await authSignOut();
+  };
+
+  if (authLoading || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-gray-500 text-lg">Connecting...</div>
+        <p className="text-lg text-gray-600">Loading...</p>
       </div>
     );
   }
 
-  if (!currentUser) return null;
+  if (!user || !profile) {
+    return null;
+  }
+
+  // Find caller display name for incoming call
+  const callerProfile = incomingCall
+    ? otherUsers.find((u) => u.id === incomingCall.callerId)
+    : null;
+  const callerName = callerProfile?.username || 'Someone';
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-white py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gray-50 py-12 px-4">
       <div className="max-w-3xl mx-auto">
-        <div className="text-center mb-10">
-          <h1 className="text-3xl font-bold text-gray-900">One-on-One Support Call</h1>
-          <p className="text-gray-600 mt-2">Connect with others who understand</p>
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-3xl font-bold text-gray-800">Audio Calls</h1>
+          <button
+            onClick={handleSignOut}
+            className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition"
+          >
+            Logout
+          </button>
         </div>
 
-        {/* Incoming Call Banner */}
-        {incomingCall && (
-          <div className="mb-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 border border-indigo-200 rounded-2xl shadow-sm animate-pulse">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-bold text-indigo-800">Incoming Audio Call</h2>
-                <p className="text-gray-700">From: {incomingCall.callerName}</p>
-              </div>
-              <div className="flex space-x-3">
-                <button
-                  onClick={acceptCall}
-                  className="bg-green-500 hover:bg-green-600 text-white font-medium py-2 px-5 rounded-lg flex items-center transition"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Accept
-                </button>
-                <button
-                  onClick={rejectCall}
-                  className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 px-5 rounded-lg transition"
-                >
-                  Reject
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Active Call View */}
-        {activeCall ? (
-          <div className="bg-indigo-600 rounded-3xl p-8 text-center text-white shadow-xl">
-            <div className="mb-6">
-              <div className="w-20 h-20 bg-indigo-300 rounded-full flex items-center justify-center mx-auto text-indigo-800 font-bold text-2xl border-4 border-white">
-                {activeCall.peerName.charAt(0).toUpperCase()}
-              </div>
-              <h2 className="text-2xl font-bold mt-4">
-                {activeCall.isCaller ? 'Calling' : 'Connected to'} {activeCall.peerName}
-              </h2>
-              <p className="text-indigo-200 mt-1">Audio call in progress</p>
-            </div>
-
+        {isInCall ? (
+          <div className="bg-white rounded-xl shadow-lg p-8 text-center border-2 border-blue-500">
+            <h2 className="text-2xl font-bold mb-4 text-blue-600">In Call</h2>
+            <p className="text-gray-600 mb-6">
+              Connected with{' '}
+              {room?.remoteParticipants.size
+                ? Array.from(room.remoteParticipants.values())[0].identity
+                : 'someone'}
+            </p>
             <button
               onClick={endCall}
-              className="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-8 rounded-full flex items-center mx-auto transition transform hover:scale-105"
+              className="bg-red-600 hover:bg-red-700 text-white font-bold py-4 px-8 rounded-full text-lg transition transform hover:scale-105"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5m6 11.25a3 3 0 01-3-3V4.5m6 0v8.25m0-8.25a3 3 0 00-3-3H6.75" />
-              </svg>
               End Call
             </button>
+            <div className="mt-6 text-sm text-gray-500">Microphone is active • Audio only</div>
           </div>
-        ) : (
-          // Dialer UI
-          <div className="bg-white rounded-2xl shadow-md p-6 border border-gray-100">
-            <div className="space-y-5">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Select someone to call
-                </label>
-                <select
-                  value={selectedUserId}
-                  onChange={(e) => setSelectedUserId(e.target.value)}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                >
-                  <option value="">— Choose a user —</option>
-                  {users.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.fullName}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
+        ) : incomingCall ? (
+          <div className="bg-white rounded-xl shadow-lg p-8 text-center border-2 border-yellow-500">
+            <h2 className="text-2xl font-bold mb-4 text-yellow-700">Incoming Call</h2>
+            <p className="text-xl mb-6 text-gray-700">{callerName} is calling you</p>
+            <div className="flex justify-center gap-6">
               <button
-                onClick={startCall}
-                disabled={!selectedUserId}
-                className={`w-full py-3 px-4 rounded-lg font-semibold text-white flex items-center justify-center transition ${
-                  selectedUserId
-                    ? 'bg-indigo-600 hover:bg-indigo-700 shadow'
-                    : 'bg-gray-300 cursor-not-allowed'
-                }`}
+                onClick={acceptCall}
+                className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-lg text-lg transition transform hover:scale-105"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                </svg>
-                Start Audio Call
+                Accept
               </button>
-
-              <p className="text-center text-xs text-gray-500 mt-4">
-                All calls are anonymous and recorded for community safety.
-              </p>
+              <button
+                onClick={declineCall}
+                className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-8 rounded-lg text-lg transition transform hover:scale-105"
+              >
+                Decline
+              </button>
             </div>
           </div>
-        )}
+        ) : (
+          <div className="bg-white rounded-xl shadow-lg p-8">
+            <div className="mb-6">
+              <h2 className="text-xl font-semibold mb-2">Start a Call</h2>
+              <p className="text-gray-600 mb-4">Select a user to start an audio call</p>
+              <select
+                value={targetUser}
+                onChange={(e) => setTargetUser(e.target.value)}
+                className="w-full p-3 border border-gray-300 rounded-lg mb-4 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">Select user...</option>
+                {otherUsers.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.username}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={startCall}
+                disabled={!targetUser}
+                className={`w-full py-3 rounded-lg font-medium text-lg transition ${
+                  targetUser
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                Call {targetUser ? `→ ${otherUsers.find(u => u.id === targetUser)?.username || ''}` : ''}
+              </button>
+            </div>
 
-        {error && (
-          <div className="mt-6 p-4 bg-red-50 text-red-700 rounded-lg text-center border border-red-200">
-            {error}
+            <div className="mt-8 pt-6 border-t border-gray-200">
+              <h3 className="font-medium text-gray-700 mb-2">Your user ID:</h3>
+              <div className="text-sm font-mono bg-gray-100 p-3 rounded-lg">{user.id}</div>
+            </div>
           </div>
         )}
       </div>
