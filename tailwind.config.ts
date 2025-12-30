@@ -1,16 +1,18 @@
-// tailwind.config.ts
-import type { Config } from 'tailwindcss';
+import type { Config } from 'tailwindcss'
 
-const config: Config = {
+export default {
   content: [
-    './src/**/*.{js,jsx,ts,tsx}', // includes app/, components/, etc.
+    './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
+    './src/components/**/*.{js,ts,jsx,tsx,mdx}',
+    './src/app/**/*.{js,ts,jsx,tsx,mdx}',
   ],
   theme: {
     extend: {},
   },
   plugins: [
-    require('tailwindcss-animate'), // ← This enables animations (ShadCN needs this)
+    require('@tailwindcss/forms'),
+    require('@tailwindcss/typography'),
+    // Only include if you use animations:
+    // require('tailwindcss-animate'),
   ],
-};
-
-export default config;
+} satisfies Config

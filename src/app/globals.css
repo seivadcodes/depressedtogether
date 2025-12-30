@@ -1,10 +1,8 @@
-/* src/app/globals.css */
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Optional: Add minimal global reset for maximum compatibility */
+/* Your custom CSS below */
 *,
 *::before,
 *::after {
