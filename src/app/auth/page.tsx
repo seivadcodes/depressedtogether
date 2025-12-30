@@ -24,25 +24,29 @@ export default function AuthPage() {
   }, [user, loading, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setSubmitting(true);
+  e.preventDefault();
+  setError('');
+  setSubmitting(true);
 
-    try {
-      if (authMode === 'sign-in') {
-        await signIn(email, password);
-      } else {
-        if (!fullName.trim()) {
-          throw new Error('Please enter your name.');
-        }
-        await signUp(email, password, fullName.trim());
+  try {
+    if (authMode === 'sign-in') {
+      await signIn(email, password);
+    } else {
+      if (!fullName.trim()) {
+        throw new Error('Please enter your name.');
       }
-    } catch (err: any) {
-      setError(err.message || 'Authentication failed. Please try again.');
-    } finally {
-      setSubmitting(false);
+      await signUp(email, password, fullName.trim());
     }
-  };
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      setError(err.message);
+    } else {
+      setError('Authentication failed. Please try again.');
+    }
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   if (loading) {
     return (
