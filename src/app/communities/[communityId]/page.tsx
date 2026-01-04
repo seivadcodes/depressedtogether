@@ -1797,31 +1797,22 @@ setComments(initialComments);
                       <p style={{ color: baseColors.text.primary, whiteSpace: 'pre-line', marginBottom: spacing.lg }}>
                         {post.content}
                       </p>
-                      {post.media_url && (
-                        <div style={{ marginBottom: spacing.lg, maxHeight: '24rem', overflow: 'hidden', borderRadius: borderRadius.md }}>
-                          {post.media_url.includes('video') ? (
-                            <video
-                              src={post.media_url}
-                              controls
-                              style={{ width: '100%', height: 'auto', maxHeight: '24rem', objectFit: 'contain' }}
-                              onError={(e) => {
-                                (e.target as HTMLVideoElement).style.display = 'none';
-                              }}
-                            />
-                          ) : (
-                            <Image
-                              src={post.media_url}
-                              alt="Post media"
-                              width={800}
-                              height={400}
-                              style={{ width: '100%', height: 'auto', maxHeight: '24rem', objectFit: 'contain', borderRadius: borderRadius.md }}
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).parentElement!.style.display = 'none';
-                              }}
-                            />
-                          )}
-                        </div>
-                      )}
+                      {post.media_url && post.media_url !== 'uploading' && (
+  post.media_url.includes('video') ? (
+    <video src={post.media_url} controls style={{ /* ... */ }} />
+  ) : (
+    <Image
+      src={post.media_url}
+      alt="Post media"
+      width={800}
+      height={400}
+      style={{ /* ... */ }}
+      onError={(e) => {
+        (e.target as HTMLImageElement).parentElement!.style.display = 'none';
+      }}
+    />
+  )
+)}
                       <div
                         style={{
                           display: 'flex',
