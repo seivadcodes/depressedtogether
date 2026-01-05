@@ -152,7 +152,7 @@ export default function RoomPage() {
         setToken(token);
 
         // Start or initialize timer
-        await maybeStartCallTimer(roomId, roomType, userId, callStartedAt);
+        await checkAndStartTimer(roomId, roomType, userId, );
 
       } catch (err) {
         console.error('[RoomPage] Init error:', err);
@@ -172,67 +172,108 @@ export default function RoomPage() {
     };
   }, [timerInterval]);
 
+  // 🔴 Realtime listener for room_participants changes
+// 🔴 Realtime listener for room_participants changes (for group rooms)
+useEffect(() => {
+  if (!roomId || !roomMeta || roomMeta.type !== 'group') {
+    return;
+  }
+
+  const participantsChannel = supabase
+    .channel(`room_participants:${roomId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'room_participants',
+        filter: `room_id=eq.${roomId}`,
+      },
+      async (payload) => {
+        console.log('[RoomPage] room_participants changed:', payload);
+
+        // ✅ Safely get session with await
+        const sessionResponse = await supabase.auth.getSession();
+        if (!sessionResponse.data.session) {
+          console.warn('No session during participant change');
+          return;
+        }
+        const userId = sessionResponse.data.session.user.id;
+
+        // Re-check and possibly start timer
+        await checkAndStartTimer(roomId, roomMeta.type, userId);
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(participantsChannel);
+  };
+}, [roomId, roomMeta, supabase]);
+
   // Helper: attempt to start timer (and set call_started_at if needed)
-  const maybeStartCallTimer = async (
-    roomId: string,
-    roomType: RoomType,
-    userId: string,
-    existingCallStartedAt: Date | null
-  ) => {
-    // If already set, just start counting
-    if (existingCallStartedAt) {
+ const checkAndStartTimer = async (
+  roomId: string,
+  roomType: RoomType,
+  userId: string
+) => {
+  // Avoid re-entrancy if timer already running
+  if (timerInterval) return;
+
+  const { count } = await supabase
+    .from('room_participants')
+    .select('*', { count: 'exact', head: true })
+    .eq('room_id', roomId);
+
+  if ((count || 0) >= 2) {
+    // Fetch current call_started_at from DB to avoid race conditions
+    let callStartedAt: Date | null = null;
+
+    if (roomType === 'one-on-one') {
+      const { data: req } = await supabase
+        .from('quick_connect_requests')
+        .select('call_started_at')
+        .eq('room_id', roomId)
+        .single();
+      callStartedAt = req?.call_started_at ? new Date(req.call_started_at) : null;
+    } else {
+      const { data: req } = await supabase
+        .from('quick_group_requests')
+        .select('call_started_at')
+        .eq('room_id', roomId)
+        .single();
+      callStartedAt = req?.call_started_at ? new Date(req.call_started_at) : null;
+    }
+
+    if (callStartedAt) {
+      // Timer already started by someone else — sync with it
+      const now = new Date();
+      const diff = Math.floor((now.getTime() - callStartedAt.getTime()) / 1000);
+      setElapsedTime(diff);
       const interval = setInterval(() => {
         const now = new Date();
-        const diff = Math.floor((now.getTime() - existingCallStartedAt.getTime()) / 1000);
+        const diff = Math.floor((now.getTime() - callStartedAt!.getTime()) / 1000);
         setElapsedTime(diff);
       }, 1000);
       setTimerInterval(interval);
-      return;
-    }
-
-    // Otherwise: check participant count
-    const { count } = await supabase
-      .from('room_participants')
-      .select('*', { count: 'exact', head: true })
-      .eq('room_id', roomId);
-
-    const participantCount = count || 0;
-    console.log('[Timer] Participant count:', participantCount, 'roomType:', roomType);
-
-    // Start call only if ≥2 participants (applies to both 1:1 and group)
-    if (participantCount >= 2) {
+    } else {
+      // Start new timer
       const now = new Date();
-      // Update DB
-      if (roomType === 'one-on-one') {
-        await supabase
-          .from('quick_connect_requests')
-          .update({ call_started_at: now.toISOString() })
-          .eq('room_id', roomId);
-      } else {
-        await supabase
-          .from('quick_group_requests')
-          .update({ call_started_at: now.toISOString() })
-          .eq('room_id', roomId);
-      }
+      const table = roomType === 'one-on-one' ? 'quick_connect_requests' : 'quick_group_requests';
+      await supabase
+        .from(table)
+        .update({ call_started_at: now.toISOString() })
+        .eq('room_id', roomId);
 
-      // Start timer
+      setRoomMeta((prev) => (prev ? { ...prev, callStartedAt: now } : null));
       setElapsedTime(0);
       const interval = setInterval(() => {
         setElapsedTime((prev) => prev + 1);
       }, 1000);
       setTimerInterval(interval);
-
-      // Refresh roomMeta to reflect new callStartedAt
-      setRoomMeta((prev) =>
-        prev
-          ? { ...prev, callStartedAt: now }
-          : null
-      );
-      console.log('[Timer] Started call timer at:', now);
-    } else {
-      console.log('[Timer] Not enough participants to start timer');
     }
-  };
+  }
+};
 
   // ✅ LEAVE CALL: remove from room_participants, broadcast if 1:1, AND redirect
   const handleLeave = async () => {
