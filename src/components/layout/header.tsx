@@ -1,14 +1,13 @@
-﻿// src/components/layout/Header.tsx
-'use client';
+﻿'use client';
 
 import Link from 'next/link';
 import { Home, User, LogOut } from 'lucide-react';
+import Image from 'next/image'; // ✅ Added
 
 import { useAuth } from '@/hooks/useAuth';
 import { useState, useEffect, useRef, useMemo } from 'react';
 
 export default function Header() {
-  
   const { user, loading, signOut } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -27,9 +26,13 @@ export default function Header() {
     };
   }, []);
 
-  // ✅ Compute initials during render — no state or effect needed
-  const initials = useMemo(() => {
-    if (!user) return 'U';
+  // ✅ Compute avatar URL and initials
+  const userDisplay = useMemo(() => {
+    if (!user) {
+      return { avatarUrl: null, initials: 'U' };
+    }
+
+    const avatarUrl = user.user_metadata?.avatar_url || null;
 
     let name = '';
     if (user.user_metadata?.full_name) {
@@ -38,11 +41,13 @@ export default function Header() {
       name = user.email.split('@')[0];
     }
 
-    return name
+    const initials = name
       .split(' ')
       .map((n) => n[0]?.toUpperCase() || '')
       .join('')
       .substring(0, 2) || 'U';
+
+    return { avatarUrl, initials };
   }, [user]);
 
   const handleLogout = async () => {
@@ -106,19 +111,42 @@ export default function Header() {
                   width: '2rem',
                   height: '2rem',
                   borderRadius: '9999px',
-                  backgroundColor: '#60a5fa', // blue-400
-                  color: 'white',
+                  border: 'none',
+                  cursor: 'pointer',
+                  backgroundColor: userDisplay.avatarUrl ? 'transparent' : '#60a5fa', // blue-400
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontWeight: 500,
-                  fontSize: '0.875rem',
-                  border: 'none',
-                  cursor: 'pointer',
+                  position: 'relative',
                 }}
                 aria-label="User menu"
               >
-                {initials}
+                {userDisplay.avatarUrl ? (
+                  <Image
+                    src={userDisplay.avatarUrl}
+                    alt="Profile"
+                    width={32}
+                    height={32}
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      borderRadius: '9999px',
+                      objectFit: 'cover',
+                      border: '1px solid rgba(255,255,255,0.2)',
+                    }}
+                    unoptimized // ✅ Required for Supabase public URLs (or configure loader)
+                  />
+                ) : (
+                  <span
+                    style={{
+                      color: 'white',
+                      fontWeight: 500,
+                      fontSize: '0.875rem',
+                    }}
+                  >
+                    {userDisplay.initials}
+                  </span>
+                )}
               </button>
 
               {isMenuOpen && (
