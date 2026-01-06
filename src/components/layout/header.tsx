@@ -1,16 +1,48 @@
-﻿'use client';
+﻿// src/components/layout/Header.tsx
+'use client';
 
 import Link from 'next/link';
 import { Home, User, LogOut } from 'lucide-react';
-import Image from 'next/image'; // ✅ Added
-
-import { useAuth } from '@/hooks/useAuth';
 import { useState, useEffect, useRef, useMemo } from 'react';
+import Image from 'next/image';
+import { createClient } from '@/lib/supabase';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function Header() {
-  const { user, loading, signOut } = useAuth();
+  const { user, loading: authLoading, signOut } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [profile, setProfile] = useState<{ full_name?: string; avatar_url?: string } | null>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  const supabase = useMemo(() => createClient(), []);
+
+  // Fetch profile when user is available
+  useEffect(() => {
+    const fetchProfile = async () => {
+      if (!user) {
+        setProfile(null);
+        setProfileLoading(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('full_name, avatar_url')
+        .eq('id', user.id)
+        .single();
+
+      if (error) {
+        console.error('Failed to load profile in header:', error);
+        setProfile(null);
+      } else {
+        setProfile(data);
+      }
+      setProfileLoading(false);
+    };
+
+    fetchProfile();
+  }, [user, supabase]);
 
   // Close menu on outside click
   useEffect(() => {
@@ -26,37 +58,24 @@ export default function Header() {
     };
   }, []);
 
-  // ✅ Compute avatar URL and initials
-  const userDisplay = useMemo(() => {
-    if (!user) {
-      return { avatarUrl: null, initials: 'U' };
-    }
-
-    const avatarUrl = user.user_metadata?.avatar_url || null;
-
-    let name = '';
-    if (user.user_metadata?.full_name) {
-      name = user.user_metadata.full_name;
-    } else if (user.email) {
-      name = user.email.split('@')[0];
-    }
-
-    const initials = name
+  // ✅ Compute initials at top level — no conditional hook
+  const initials = useMemo(() => {
+    if (!user) return 'U';
+    const name = profile?.full_name || user.email?.split('@')[0] || 'User';
+    return name
       .split(' ')
       .map((n) => n[0]?.toUpperCase() || '')
       .join('')
       .substring(0, 2) || 'U';
-
-    return { avatarUrl, initials };
-  }, [user]);
+  }, [user, profile]);
 
   const handleLogout = async () => {
     await signOut();
     setIsMenuOpen(false);
   };
 
-  // If still loading, show nothing
-  if (loading) {
+  // Show nothing while auth is loading
+  if (authLoading) {
     return null;
   }
 
@@ -69,7 +88,7 @@ export default function Header() {
           left: 0,
           right: 0,
           zIndex: 50,
-          backgroundColor: 'rgba(30, 58, 138, 0.95)', // #1e3a8a (blue-800)
+          backgroundColor: 'rgba(30, 58, 138, 0.95)', // #1e3a8a
           backdropFilter: 'blur(4px)',
           borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
           boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
@@ -111,41 +130,65 @@ export default function Header() {
                   width: '2rem',
                   height: '2rem',
                   borderRadius: '9999px',
-                  border: 'none',
-                  cursor: 'pointer',
-                  backgroundColor: userDisplay.avatarUrl ? 'transparent' : '#60a5fa', // blue-400
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  position: 'relative',
+                  border: 'none',
+                  cursor: 'pointer',
+                  backgroundColor: 'transparent',
+                  padding: 0,
                 }}
                 aria-label="User menu"
               >
-                {userDisplay.avatarUrl ? (
-                  <Image
-                    src={userDisplay.avatarUrl}
-                    alt="Profile"
-                    width={32}
-                    height={32}
+                {profileLoading ? (
+                  <div
                     style={{
-                      width: '100%',
-                      height: '100%',
+                      width: '2rem',
+                      height: '2rem',
                       borderRadius: '9999px',
-                      objectFit: 'cover',
-                      border: '1px solid rgba(255,255,255,0.2)',
-                    }}
-                    unoptimized // ✅ Required for Supabase public URLs (or configure loader)
-                  />
-                ) : (
-                  <span
-                    style={{
+                      backgroundColor: '#60a5fa',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
                       color: 'white',
                       fontWeight: 500,
                       fontSize: '0.875rem',
                     }}
                   >
-                    {userDisplay.initials}
-                  </span>
+                    {initials}
+                  </div>
+                ) : profile?.avatar_url ? (
+                  <Image
+                    unoptimized
+                    src={profile.avatar_url}
+                    alt="Your avatar"
+                    width={32}
+                    height={32}
+                    style={{
+                      width: '2rem',
+                      height: '2rem',
+                      borderRadius: '9999px',
+                      objectFit: 'cover',
+                      border: '2px solid white',
+                    }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width: '2rem',
+                      height: '2rem',
+                      borderRadius: '9999px',
+                      backgroundColor: '#60a5fa',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'white',
+                      fontWeight: 500,
+                      fontSize: '0.875rem',
+                    }}
+                  >
+                    {initials}
+                  </div>
                 )}
               </button>
 
@@ -223,7 +266,6 @@ export default function Header() {
         </div>
       </header>
 
-      {/* Overlay to close menu on outside tap (mobile-friendly) */}
       {isMenuOpen && (
         <div
           style={{

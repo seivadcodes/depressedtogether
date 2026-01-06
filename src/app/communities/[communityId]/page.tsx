@@ -1,9 +1,11 @@
 // src/app/communities/[communityId]/page.tsx
 'use client';
-import { useState, useEffect, ChangeEvent, FormEvent } from 'react';
+import { useState, useEffect, ChangeEvent, FormEvent, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
+import { ShareCommunityButton } from '@/components/ShareCommunityButton';
+import Head from 'next/head';
 
 import {
   Users,
@@ -274,6 +276,7 @@ export default function CommunityDetailPage() {
   // Only show the latest comment by default
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
   const [replyingToComment, setReplyingToComment] = useState<Record<string, boolean>>({});
   const [replyContent, setReplyContent] = useState<Record<string, string>>({});
   const [addingReply, setAddingReply] = useState<Record<string, boolean>>({});
@@ -315,240 +318,272 @@ export default function CommunityDetailPage() {
     const years = Math.floor(days / 365);
     return years === 1 ? '1 year ago' : `${years} years ago`;
   };
+const isUserOnline = useCallback((lastOnline: string | null): boolean => {
+  if (!lastOnline) return false;
+  const lastOnlineDate = new Date(lastOnline);
+  const now = new Date();
+  return now.getTime() - lastOnlineDate.getTime() < 5 * 60 * 1000;
+}, []); // 👈 empty dependency array — it never changes
 
-  const isUserOnline = (lastOnline: string | null): boolean => {
-    if (!lastOnline) return false;
-    const lastOnlineDate = new Date(lastOnline);
-    const now = new Date();
-    return now.getTime() - lastOnlineDate.getTime() < 5 * 60 * 1000;
-  };
+ useEffect(() => {
+  const fetchData = async () => {
+    if (!communityId) return;
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!communityId) return;
-      
-      try {
-        setLoading(true);
-        setError(null);
-        
-        // Fetch community data
-        const { data: communityData, error: communityError } = await supabase
-          .from('communities')
-          .select('*')
-          .eq('id', communityId)
-          .single();
-          
-        if (communityError) throw new Error(`Failed to fetch community: ${communityError.message}`);
-        if (!communityData) throw new Error('Community not found');
-        
-        let coverPhotoUrl = communityData.cover_photo_url;
-        if (!coverPhotoUrl) {
-          coverPhotoUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/communities/${communityId}/banner.jpg?t=${Date.now()}`;
-        }
-        
-        // Count members
-        const { count, error: countError } = await supabase
-          .from('community_members')
-          .select('*', { count: 'exact', head: true })
-          .eq('community_id', communityId);
-          
-        if (countError) throw new Error(`Failed to count members: ${countError.message}`);
-        
-        const communityWithPhoto = {
-          ...communityData,
-          cover_photo_url: coverPhotoUrl,
-          member_count: count || 0,
-          online_count: 0, // This would need to be calculated based on last_online timestamps
+    try {
+      setLoading(true);
+      setError(null);
+
+      // 1. Fetch community data
+      const { data: communityData, error: communityError } = await supabase
+        .from('communities')
+        .select('*')
+        .eq('id', communityId)
+        .single();
+
+      if (communityError) throw new Error(`Failed to fetch community: ${communityError.message}`);
+      if (!communityData) throw new Error('Community not found');
+
+      let coverPhotoUrl = communityData.cover_photo_url;
+      if (!coverPhotoUrl) {
+        coverPhotoUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/communities/${communityId}/banner.jpg?t=${Date.now()}`;
+      }
+
+      // 2. Count total members
+      const { count, error: countError } = await supabase
+        .from('community_members')
+        .select('*', { count: 'exact', head: true })
+        .eq('community_id', communityId);
+
+      if (countError) throw new Error(`Failed to count members: ${countError.message}`);
+
+      // 3. ✅ FETCH MEMBERS HERE — BEFORE onlineCount
+      const { data: membersData, error: membersError } = await supabase
+        .from('community_members')
+        .select(`
+          role,
+          joined_at,
+          user_id,
+          user:profiles!left (
+            id,
+            full_name,
+            avatar_url,
+            last_online,
+            is_anonymous
+          )
+        `)
+        .eq('community_id', communityId)
+        .order('joined_at', { ascending: true });
+
+      if (membersError) throw membersError;
+
+      // 4. ✅ NOW calculate onlineCount — membersData is available
+      const onlineCount = membersData.filter((member: CommunityMemberWithProfile) => {
+        const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
+        return isUserOnline(profile?.last_online || null);
+      }).length;
+
+      // 5. Build community object with correct counts
+      const communityWithPhoto = {
+        ...communityData,
+        cover_photo_url: coverPhotoUrl,
+        member_count: count || 0,
+        online_count: onlineCount, // ✅ now safe and accurate
+      };
+
+      setCommunity(communityWithPhoto);
+
+      // 6. Format and set members
+      const formattedMembers = membersData.map((member: CommunityMemberWithProfile) => {
+        const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
+        const isAnonymous = profile?.is_anonymous || false;
+
+        return {
+          user_id: member.user_id,
+          username: isAnonymous ? 'Anonymous' : profile?.full_name || 'Anonymous',
+          avatar_url: isAnonymous ? null : profile?.avatar_url || null,
+          last_online: profile?.last_online || null,
+          is_online: isUserOnline(profile?.last_online || null),
+          role: member.role,
+          joined_at: member.joined_at,
         };
-        
-        setCommunity(communityWithPhoto);
-        
-        // Check if user is a member
-        if (user) {
-         const { data: memberData } = await supabase
-            .from('community_members')
-            .select('role')
-            .eq('community_id', communityId)
-            .eq('user_id', user.id)
-            .single();
-            
-          if (memberData) {
-            setIsMember(true);
-            setUserRole(memberData.role);
-          } else {
-            setIsMember(false);
-            setUserRole(null);
-          }
+      });
+
+      setMembers(formattedMembers);
+
+      // 7. Check if current user is a member
+      if (user) {
+        const { data: memberData } = await supabase
+          .from('community_members')
+          .select('role')
+          .eq('community_id', communityId)
+          .eq('user_id', user.id)
+          .single();
+
+        if (memberData) {
+          setIsMember(true);
+          setUserRole(memberData.role);
         } else {
           setIsMember(false);
           setUserRole(null);
         }
-        
-      
-       // Fetch members
-const { data: membersData, error: membersError } = await supabase
-  .from('community_members')
-  .select(`
-    role,
-    joined_at,
-    user_id,
-    user:profiles!left (
-      id,
-      full_name,
-      avatar_url,
-      last_online,
-      is_anonymous
-    )
-  `)
-  .eq('community_id', communityId)
-  .order('joined_at', { ascending: true });
-          
-        if (membersError) throw membersError;
-        
-        const formattedMembers = membersData.map((member: CommunityMemberWithProfile) => {
-          const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
-          const isAnonymous = profile?.is_anonymous || false;
-          
-          return {
-            user_id: member.user_id,
-            username: isAnonymous ? 'Anonymous' : profile?.full_name || 'Anonymous',
-            avatar_url: isAnonymous ? null : profile?.avatar_url || null,
-            last_online: profile?.last_online || null,
-            is_online: isUserOnline(profile?.last_online || null),
-            role: member.role,
-            joined_at: member.joined_at,
-          };
+      } else {
+        setIsMember(false);
+        setUserRole(null);
+      }
+
+      // 8. Fetch posts
+      const { data: postData, error: postError } = await supabase
+        .from('community_posts')
+        .select(`
+          id,
+          content,
+          created_at,
+          community_id,
+          media_url,
+          likes_count,
+          comments_count,
+          user_id
+        `)
+        .eq('community_id', communityId)
+        .order('created_at', { ascending: false });
+
+      if (postError) throw postError;
+
+      const userIds = [...new Set(postData.map((post: CommunityPost) => post.user_id))];
+      const { data: profilesData, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, full_name, avatar_url, is_anonymous')
+        .in('id', userIds);
+
+      if (profilesError) console.warn('Error fetching profiles for posts:', profilesError);
+
+      const profilesMap = new Map();
+      profilesData?.forEach((profile: Profile) => {
+        profilesMap.set(profile.id, profile);
+      });
+
+      let postsWithLikes = postData.map((post: CommunityPost) => {
+        const userProfile = profilesMap.get(post.user_id) || {};
+        const isAnonymous = userProfile.is_anonymous || false;
+
+        return {
+          id: post.id,
+          content: post.content,
+          media_url: post.media_url,
+          created_at: post.created_at,
+          user_id: post.user_id,
+          username: isAnonymous ? 'Anonymous' : userProfile.full_name || 'Anonymous',
+          avatar_url: isAnonymous ? null : userProfile.avatar_url || null,
+          community_id: post.community_id,
+          likes_count: post.likes_count || 0,
+          comments_count: post.comments_count || 0,
+          is_liked: false,
+        };
+      });
+
+      // 9. Fetch like status if user is logged in
+      if (user) {
+        const likeStatusPromises = postsWithLikes.map(async (post) => {
+          try {
+            const isLiked = await Hearts.checkIfLiked(post.id, user.id, 'community_posts');
+            return { postId: post.id, isLiked };
+          } catch (error) {
+            console.error('Error checking like status:', error);
+            return { postId: post.id, isLiked: false };
+          }
         });
-        
-        setMembers(formattedMembers);
-        
-        // Fetch posts
-       const { data: postData, error: postError } = await supabase
-          .from('community_posts')
-          .select(`
-            id,
-            content,
-            created_at,
-            community_id,
-            media_url,
-            likes_count,
-            comments_count,
-            user_id
-          `)
-          .eq('community_id', communityId)
-          .order('created_at', { ascending: false });
-          
-        if (postError) throw postError;
-        
-        const userIds = [...new Set(postData.map((post: CommunityPost) => post.user_id))];
-        const { data: profilesData, error: profilesError } = await supabase
-          .from('profiles')
-          .select('id, full_name, avatar_url, is_anonymous')
-          .in('id', userIds);
-          
-        if (profilesError) console.warn('Error fetching profiles for posts:', profilesError);
-        
-        const profilesMap = new Map();
-        profilesData?.forEach((profile: Profile) => {
-          profilesMap.set(profile.id, profile);
+
+        const likeStatusResults = await Promise.all(likeStatusPromises);
+        postsWithLikes = postsWithLikes.map((post) => {
+          const likeStatus = likeStatusResults.find((status) => status.postId === post.id);
+          return likeStatus ? { ...post, is_liked: likeStatus.isLiked } : post;
         });
-        
-        let postsWithLikes = postData.map((post: CommunityPost) => {
-          const userProfile = profilesMap.get(post.user_id) || {};
-          const isAnonymous = userProfile.is_anonymous || false;
-          
-          return {
-            id: post.id,
-            content: post.content,
-            media_url: post.media_url,
-            created_at: post.created_at,
-            user_id: post.user_id,
-            username: isAnonymous ? 'Anonymous' : userProfile.full_name || 'Anonymous',
-            avatar_url: isAnonymous ? null : userProfile.avatar_url || null,
-            community_id: post.community_id,
-            likes_count: post.likes_count || 0,
-            comments_count: post.comments_count || 0,
-            is_liked: false,
-          };
-        });
-        
-        if (user) {
-          const likeStatusPromises = postsWithLikes.map(async (post) => {
-            try {
-              const isLiked = await Hearts.checkIfLiked(post.id, user.id, 'community_posts');
-              return { postId: post.id, isLiked };
-            } catch (error) {
-              console.error('Error checking like status:', error);
-              return { postId: post.id, isLiked: false };
-            }
-          });
-          
-          const likeStatusResults = await Promise.all(likeStatusPromises);
-          postsWithLikes = postsWithLikes.map((post) => {
-            const likeStatus = likeStatusResults.find((status) => status.postId === post.id);
-            return likeStatus ? { ...post, is_liked: likeStatus.isLiked } : post;
-          });
-        }
-        
-        setPosts(postsWithLikes);
-        
-        // Fetch the latest comment for each post
-        if (postData.length > 0) {
-          const fetchLatestCommentsPromises = postData.map(async (post: CommunityPost) => {
-            const { data: latestComments, error: commentsError } = await supabase
-              .from('community_post_comments_with_profiles')
-              .select('*')
-              .eq('post_id', post.id)
-              .order('created_at', { ascending: false })
-              .limit(1);
-              
-            if (commentsError) {
-              console.error(`Error fetching latest comment for post ${post.id}:`, commentsError);
-              return { postId: post.id, comments: [] };
-            }
-            
-            if (latestComments && latestComments.length > 0) {
-              const formattedComment = {
-                id: latestComments[0].id,
-                content: latestComments[0].content,
-                created_at: latestComments[0].created_at,
-                user_id: latestComments[0].user_id,
-                username: latestComments[0].is_anonymous ? 'Anonymous' : latestComments[0].username || 'Anonymous',
-                avatar_url: latestComments[0].is_anonymous ? null : latestComments[0].avatar_url || null,
-                post_id: latestComments[0].post_id,
-                parent_comment_id: (latestComments[0].parent_comment_id ?? null),
-                replies: [],
-                reply_count: 0,
-              };
-              
-              return { postId: post.id, comments: [formattedComment] };
-            }
-            
+      }
+
+      setPosts(postsWithLikes);
+
+      // 10. Fetch latest comment for each post
+      if (postData.length > 0) {
+        const fetchLatestCommentsPromises = postData.map(async (post: CommunityPost) => {
+          const { data: latestComments, error: commentsError } = await supabase
+            .from('community_post_comments_with_profiles')
+            .select('*')
+            .eq('post_id', post.id)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+          if (commentsError) {
+            console.error(`Error fetching latest comment for post ${post.id}:`, commentsError);
             return { postId: post.id, comments: [] };
-          });
-          
-          const latestCommentsResults = await Promise.all(fetchLatestCommentsPromises);
-          
-          // Update comments state with latest comments
-         // Update comments state with latest comments
-const initialComments: Record<string, CommentNode[]> = {};
-latestCommentsResults.forEach(({ postId, comments }) => {
-  // `comments` here is already shaped like CommentNode[]
-  initialComments[postId] = comments as CommentNode[];
-});
-setComments(initialComments);
-        }
-      } catch (err) {
-  console.error('Error fetching community:', err);
-  const message = err instanceof Error ? err.message : 'Failed to load community data';
-  setError(message);
-} finally {
-  setLoading(false);
-}
-    };
-    
-    fetchData();
-  }, [communityId, user, supabase]);
+          }
+
+          if (latestComments && latestComments.length > 0) {
+            const formattedComment = {
+              id: latestComments[0].id,
+              content: latestComments[0].content,
+              created_at: latestComments[0].created_at,
+              user_id: latestComments[0].user_id,
+              username: latestComments[0].is_anonymous ? 'Anonymous' : latestComments[0].username || 'Anonymous',
+              avatar_url: latestComments[0].is_anonymous ? null : latestComments[0].avatar_url || null,
+              post_id: latestComments[0].post_id,
+              parent_comment_id: latestComments[0].parent_comment_id ?? null,
+              replies: [],
+              reply_count: 0,
+            };
+
+            return { postId: post.id, comments: [formattedComment] };
+          }
+
+          return { postId: post.id, comments: [] };
+        });
+
+        const latestCommentsResults = await Promise.all(fetchLatestCommentsPromises);
+
+        const initialComments: Record<string, CommentNode[]> = {};
+        latestCommentsResults.forEach(({ postId, comments }) => {
+          initialComments[postId] = comments as CommentNode[];
+        });
+        setComments(initialComments);
+      }
+    } catch (err) {
+      console.error('Error fetching community:', err);
+      const message = err instanceof Error ? err.message : 'Failed to load community data';
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  fetchData();
+}, [communityId, user, supabase, isUserOnline]); // ✅ include isUserOnline in deps
+
+useEffect(() => {
+  const interval = setInterval(() => {
+    setMembers(prev =>
+      prev.map(member => ({
+        ...member,
+        is_online: isUserOnline(member.last_online),
+      }))
+    );
+  }, 30_000);
+
+  return () => clearInterval(interval);
+}, [isUserOnline]);
+
+useEffect(() => {
+  if (!user) return;
+
+  const updateLastOnline = async () => {
+    await supabase
+      .from('profiles')
+      .update({ last_online: new Date().toISOString() })
+      .eq('id', user.id);
+  };
+
+  updateLastOnline(); // on mount
+  const interval = setInterval(updateLastOnline, 45_000); // every 45s
+  return () => clearInterval(interval);
+}, [user, supabase]);
 
   // In your page component, add this once:
   useEffect(() => {
@@ -568,6 +603,24 @@ setComments(initialComments);
     }
   }, []);
 
+  useEffect(() => {
+  const checkMobile = () => setIsMobile(window.innerWidth < 768);
+  checkMobile();
+  window.addEventListener('resize', checkMobile);
+  return () => window.removeEventListener('resize', checkMobile);
+}, []);
+
+
+useEffect(() => {
+  if (!community || members.length === 0) return;
+
+  const currentOnline = members.filter(m => m.is_online).length;
+
+  // ✅ Only update if count changed
+  if (community.online_count !== currentOnline) {
+    setCommunity(prev => prev ? { ...prev, online_count: currentOnline } : null);
+  }
+}, [members, community]);
   const handleMembership = async () => {
     if (!user) {
       router.push(`/auth?redirectTo=/communities/${communityId}`);
@@ -1222,6 +1275,29 @@ setComments(initialComments);
   if (error) {
     return (
       <div style={pageContainer}>
+        {community && (
+  <Head>
+    <title>{community.name} • Healing Shoulder</title>
+    <meta property="og:title" content={community.name} />
+    <meta
+      property="og:description"
+      content={community.description?.substring(0, 160) || 'A compassionate space for shared grief and healing.'}
+    />
+    <meta property="og:type" content="website" />
+    <meta
+      property="og:url"
+      content={`https://healingshoulder.site/community/${communityId}/${community.name.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/[\s-]+/g, '-').replace(/^-+|-+$/g, '')}`}
+    />
+    <meta
+      property="og:image"
+      content={
+        community.cover_photo_url ||
+        `https://healingshoulder.site/og-community-default.jpg`
+      }
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+  </Head>
+)}
         <div
           style={{
             background: baseColors.surface,
@@ -1553,7 +1629,16 @@ const renderCommentPreview = (comment: Comment) => {
         )}
       </div>
       
-      <div style={{ maxWidth: '1152px', margin: '0 auto', display: 'grid', gridTemplateColumns: '2fr 1fr', gap: spacing['2xl'] }}>
+      {/* Responsive container: column on mobile, row on desktop */}
+<div
+  style={{
+    maxWidth: '1152px',
+    margin: '0 auto',
+    display: 'flex',
+    flexDirection: isMobile ? 'column' : 'row',
+    gap: spacing['2xl'],
+  }}
+>
         {/* Main Feed */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: spacing['2xl'] }}>
           {/* Community Header */}
@@ -1657,22 +1742,22 @@ const renderCommentPreview = (comment: Comment) => {
                     )}
                   </div>
                   <div style={{ flex: 1 }}>
-                    <textarea
-                      value={newPostContent}
-                      onChange={(e) => setNewPostContent(e.target.value)}
-                      placeholder={`What&apos;s on your mind, ${authUsername}? Share your thoughts, memories, or questions with the community...`}
-                      style={{
-                        width: '100%',
-                        padding: `${spacing.sm} ${spacing.md}`,
-                        border: `1px solid ${baseColors.border}`,
-                        borderRadius: borderRadius.md,
-                        minHeight: '100px',
-                        maxHeight: '200px',
-                        resize: 'vertical',
-                        fontSize: '0.875rem',
-                      }}
-                      maxLength={500}
-                    />
+                <textarea
+  value={newPostContent}
+  onChange={(e) => setNewPostContent(e.target.value)}
+  placeholder={`What's on your mind, ${authUsername}? Share your thoughts, memories, or questions with the community...`}
+  style={{
+    width: '100%',
+    padding: `${spacing.sm} ${spacing.md}`,
+    border: `1px solid ${baseColors.border}`,
+    borderRadius: borderRadius.md,
+    minHeight: '100px',
+    maxHeight: '200px',
+    resize: 'vertical',
+    fontSize: '0.875rem',
+  }}
+  maxLength={500}
+/>
                     {newPostMedia && (
                       <div style={{ marginTop: spacing.md, padding: spacing.md, background: '#f8fafc', borderRadius: borderRadius.md, position: 'relative' }}>
                         <button
@@ -1864,16 +1949,22 @@ const renderCommentPreview = (comment: Comment) => {
   post.media_url.includes('video') ? (
     <video src={post.media_url} controls style={{ /* ... */ }} />
   ) : (
-    <Image
-      src={post.media_url}
-      alt="Post media"
-      width={800}
-      height={400}
-      style={{ /* ... */ }}
-      onError={(e) => {
-        (e.target as HTMLImageElement).parentElement!.style.display = 'none';
-      }}
-    />
+   <Image
+  src={post.media_url}
+  alt="Post media"
+  width={800}
+  height={400}
+  style={{
+    width: '100%',
+    height: 'auto',
+    maxHeight: '400px',
+    objectFit: 'contain', // or 'cover' if you prefer cropping
+    borderRadius: borderRadius.md,
+  }}
+  onError={(e) => {
+    (e.target as HTMLImageElement).parentElement!.style.display = 'none';
+  }}
+/>
   )
 )}
                       <div
@@ -2080,16 +2171,14 @@ const renderCommentPreview = (comment: Comment) => {
                 <Users size={20} style={{ color: baseColors.primary }} />
                 Community Members
               </h2>
-              {isMember && (
-                <button
-                  style={{ ...outlineButtonStyle, fontSize: '0.875rem', padding: `${spacing.sm} ${spacing.sm}` }}
-                  onClick={() => toast('Member invite functionality coming soon!')}
-                >
-                  <UserPlus size={16} style={{ marginRight: '0.25rem' }} />
-                  Invite
-                </button>
-              )}
-            </div>
+             {isMember && community && (
+  <ShareCommunityButton
+    communityId={community.id}
+    communityName={community.name}
+    communityDescription={community.description || ''}
+    style={{ ...outlineButtonStyle, fontSize: '0.875rem', padding: `${spacing.sm} ${spacing.sm}` }}
+  />
+)}        </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md, maxHeight: '500px', overflowY: 'auto' }}>
               {members.map((member) => (
                 <div
