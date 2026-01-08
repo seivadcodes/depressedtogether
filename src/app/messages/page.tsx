@@ -161,19 +161,15 @@ const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
   isCameraOff,
   setIsCameraOff,
   hangUp,
+   incomingCall,        // ✅ now from context
+  setIncomingCall,     // ✅ essential
+  acceptCall,          // ✅ needed for overlay
+  rejectCall,          // ✅ needed for overlay
 } = useCall();
   
 
 
-  // LiveKit / Call Overlay State
 
-const [incomingCall, setIncomingCall] = useState<{
-  roomName: string;
-  callerId: string;
-  callerName: string;
-  callType: 'audio' | 'video';
-  conversationId: string;
-} | null>(null);
 
 
 
@@ -371,7 +367,39 @@ useEffect(() => {
     }
   }, [messages]);
 
-  // Listen for incoming call notifications (via your WebSocket or custom event)
+// 🔔 Listen for incoming call notifications via WebSocket
+useEffect(() => {
+  if (!currentUserId) return;
+
+  const ws = new WebSocket(`ws://178.128.210.229:8084?userId=${currentUserId}`);
+
+  ws.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      if (msg.type === 'incoming_call') {
+        setIncomingCall({
+          roomName: msg.roomName,
+          callerId: msg.callerId,
+          callerName: msg.callerName,
+          callType: msg.callType,
+          conversationId: msg.conversationId,
+        });
+        // Ensure overlay shows
+        setCallState('idle');
+      } else if (msg.type === 'call_ended') {
+        hangUp();
+      }
+    } catch (e) {
+      console.error('CallCheck WebSocket message error:', e);
+    }
+  };
+
+  ws.onopen = () => console.log('✅ Call WebSocket connected');
+  ws.onerror = (err) => console.error('CallCheck WebSocket error:', err);
+  ws.onclose = () => console.log('CallCheck WebSocket closed');
+
+  return () => ws.close();
+}, [currentUserId, setIncomingCall, setCallState, hangUp]);
 
 
   // Handle long press for reactions (only on others' messages)
@@ -2874,6 +2902,7 @@ const safeLastSeen = otherUserLastSeen;
           )}
         </div>
       ) : null}
+      <CallOverlay />
     </div>
   );
 }

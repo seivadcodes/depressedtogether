@@ -1,9 +1,10 @@
 'use client';
-import { useEffect, useRef } from 'react';
-import { useCall } from '@/context/CallContext';
-import type { RemoteTrack, LocalTrack } from 'livekit-client';
 
-// SVG icons
+import { useEffect, useRef, useCallback } from 'react';
+import { useCall } from '@/context/CallContext';
+import type { RemoteTrack } from 'livekit-client';
+
+// --- SVG Icons ---
 const MicIcon = ({ className }: { className?: string }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -59,12 +60,31 @@ const PhoneOffIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 
+const PhoneIcon = ({ className }: { className?: string }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <path d="M22 16.92v3a2 2 0 0 1-2.18 2A19.79 19.79 0 0 1 8.63 19.07 19.5 19.5 0 0 1 6 15.5a2 2 0 0 1-.45-2.11L8.09 9.91A16 16 0 0 0 14 15l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+  </svg>
+);
+
+// --- Helpers ---
 const formatCallDuration = (seconds: number): string => {
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 };
 
+// --- Main Component ---
 export default function CallOverlay() {
   const {
     callState,
@@ -81,198 +101,169 @@ export default function CallOverlay() {
   } = useCall();
 
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
-  const remoteTrackIdRef = useRef<string | null>(null);
 
-  // Attach remote audio track when available
-  // In CallOverlay component
-useEffect(() => {
-  const audioElement = remoteAudioRef.current;
-  
-  if (audioElement && remoteAudioTrack) {
+  // 🔊 Attach remote audio track
+  useEffect(() => {
+    const audioEl = remoteAudioRef.current;
+    if (!audioEl || !remoteAudioTrack) return;
+
     try {
-      // Attach the track to the audio element
-      remoteAudioTrack.attach(audioElement);
-      
-      // Try to play (might fail due to autoplay policies)
-      audioElement.play().catch(e => {
-        console.warn('Audio playback requires user interaction:', e);
-        // We can't do much here except wait for user interaction
+      remoteAudioTrack.attach(audioEl);
+      audioEl.play().catch(e => {
+        console.warn('Audio autoplay blocked:', e);
       });
-      
+
       return () => {
-        // Detach the track when component unmounts or track changes
-        remoteAudioTrack.detach(audioElement);
+        remoteAudioTrack.detach(audioEl);
       };
     } catch (e) {
-      console.error('Error attaching remote audio track:', e);
+      console.error('Failed to attach remote audio:', e);
     }
-  }
-  
-  return () => {
-    if (audioElement) {
-      audioElement.pause();
-      audioElement.srcObject = null;
-    }
-  };
-}, [remoteAudioTrack]);
 
-  // Handle incoming call acceptance/rejection
-  useEffect(() => {
-    if (incomingCall && callState === 'idle') {
-      // Set to ringing state when receiving a call
-      // Note: This is handled by the signaling provider elsewhere
-    }
-  }, [incomingCall, callState]);
+    return () => {
+      if (audioEl) {
+        audioEl.pause();
+        audioEl.srcObject = null;
+      }
+    };
+  }, [remoteAudioTrack]);
 
-  // Mute/unmute handler
-  const toggleMute = async () => {
-    // This will be implemented when we have the room connection
+  // 🔇 Toggle mute (real implementation would control actual track)
+  const toggleMute = useCallback(() => {
+    // In a full implementation, you'd do:
+    // if (localAudioTrack) localAudioTrack.setEnabled(!isMuted);
     setIsMuted(!isMuted);
-    
-    // In a real implementation, you would toggle the audio track here
-    console.log(`Microphone ${isMuted ? 'unmuted' : 'muted'}`);
-  };
+  }, [isMuted, setIsMuted, localAudioTrack]);
 
-  // Only show overlay when in a call state
+  // 🚫 Don't render if completely idle
   if (callState === 'idle' && !incomingCall) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-gray-900/90 backdrop-blur-sm flex flex-col items-center justify-center p-4">
-      {/* Hidden audio element for remote audio */}
+    <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center p-4">
+      {/* Hidden audio element for remote stream */}
       <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
-      
-      {/* Call Status Header */}
-      <div className="text-center mb-8">
+
+      {/* Call Status */}
+      <div className="text-center mb-8 max-w-md">
         {incomingCall && callState === 'idle' && (
           <>
-            <h2 className="text-xl font-semibold text-white mb-2">Incoming Call</h2>
+            <h2 className="text-xl font-bold text-white mb-2">Incoming {callType} Call</h2>
             <p className="text-lg text-white/90">{incomingCall.callerName}</p>
-            <p className="text-sm text-blue-300 mt-1">Audio call</p>
+            <p className="text-sm text-blue-300 mt-1">Tap to accept or decline</p>
           </>
         )}
-        
+
         {callState === 'calling' && (
           <>
-            <h2 className="text-xl font-semibold text-white mb-2">Calling</h2>
-            <div className="flex justify-center items-center space-x-1">
-              <span className="text-lg text-white/90 animate-pulse">.</span>
-              <span className="text-lg text-white/90 animate-pulse delay-100">.</span>
-              <span className="text-lg text-white/90 animate-pulse delay-200">.</span>
+            <h2 className="text-xl font-bold text-white mb-2">Calling…</h2>
+            <div className="flex space-x-1">
+              {[0, 1, 2].map(i => (
+                <span
+                  key={i}
+                  className="text-lg text-white/90 animate-pulse"
+                  style={{ animationDelay: `${i * 0.2}s` }}
+                >
+                  .
+                </span>
+              ))}
             </div>
           </>
         )}
-        
+
         {callState === 'ringing' && (
           <>
-            <h2 className="text-xl font-semibold text-white mb-2">Ringing</h2>
-            <div className="flex justify-center items-center space-x-1">
-              <span className="text-lg text-white/90 animate-pulse">.</span>
-              <span className="text-lg text-white/90 animate-pulse delay-100">.</span>
-              <span className="text-lg text-white/90 animate-pulse delay-200">.</span>
+            <h2 className="text-xl font-bold text-white mb-2">Ringing…</h2>
+            <div className="flex space-x-1">
+              {[0, 1, 2].map(i => (
+                <span
+                  key={i}
+                  className="text-lg text-white/90 animate-pulse"
+                  style={{ animationDelay: `${i * 0.2}s` }}
+                >
+                  .
+                </span>
+              ))}
             </div>
           </>
         )}
-        
+
         {callState === 'connected' && (
           <>
-            <h2 className="text-xl font-semibold text-white mb-1">Connected</h2>
-            <div className="bg-black/30 text-white text-3xl font-mono px-4 py-1 rounded-lg inline-block">
+            <h2 className="text-xl font-bold text-white mb-2">Connected</h2>
+            <div className="bg-black/40 text-white text-3xl font-mono px-4 py-2 rounded-lg inline-block">
               {formatCallDuration(callDuration)}
             </div>
           </>
         )}
-        
+
         {callState === 'ended' && (
           <>
-            <h2 className="text-xl font-semibold text-white mb-2">Call Ended</h2>
-            <div className="text-lg text-red-400">Disconnected</div>
+            <h2 className="text-xl font-bold text-white mb-2">Call Ended</h2>
+            <p className="text-red-400">Disconnected</p>
           </>
         )}
       </div>
-      
-      {/* Incoming Call Controls */}
+
+      {/* Controls */}
       {incomingCall && callState === 'idle' && (
-        <div className="flex gap-8 mb-12">
+        <div className="flex gap-8 mb-6">
           <button
             onClick={rejectCall}
-            className="p-4 rounded-full bg-red-600 flex flex-col items-center hover:bg-red-700 transition-colors"
+            className="flex flex-col items-center group"
           >
-            <div className="w-12 h-12 bg-red-700 rounded-full flex items-center justify-center mb-2">
+            <div className="w-14 h-14 bg-red-600 rounded-full flex items-center justify-center mb-2 group-hover:bg-red-700 transition-colors">
               <PhoneOffIcon className="text-white w-6 h-6" />
             </div>
             <span className="text-white font-medium">Decline</span>
           </button>
-          
+
           <button
             onClick={acceptCall}
-            className="p-4 rounded-full bg-green-600 flex flex-col items-center hover:bg-green-700 transition-colors"
+            className="flex flex-col items-center group"
           >
-            <div className="w-12 h-12 bg-green-700 rounded-full flex items-center justify-center mb-2">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="text-white w-6 h-6"
-              >
-                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
-              </svg>
+            <div className="w-14 h-14 bg-green-600 rounded-full flex items-center justify-center mb-2 group-hover:bg-green-700 transition-colors">
+              <PhoneIcon className="text-white w-6 h-6" />
             </div>
             <span className="text-white font-medium">Accept</span>
           </button>
         </div>
       )}
-      
-      {/* Call Controls - shown when in calling/ringing/connected states */}
+
       {(callState === 'calling' || callState === 'ringing' || callState === 'connected') && (
-        <div className="flex gap-8 mb-8">
-          {/* Mute button - only shown when connected */}
+        <div className="flex gap-8">
           {callState === 'connected' && (
             <button
               onClick={toggleMute}
-              className={`p-4 rounded-full flex flex-col items-center ${
-                isMuted ? 'bg-red-500/90' : 'bg-gray-700/90'
-              } hover:opacity-90 transition-opacity`}
+              className={`flex flex-col items-center ${
+                isMuted ? 'text-red-400' : 'text-gray-300'
+              }`}
             >
-              <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-2 ${
-                isMuted ? 'bg-red-600' : 'bg-gray-800'
-              }`}>
+              <div
+                className={`w-14 h-14 rounded-full flex items-center justify-center mb-2 ${
+                  isMuted ? 'bg-red-900/50' : 'bg-gray-800/50'
+                }`}
+              >
                 {isMuted ? (
                   <MicOffIcon className="text-white w-6 h-6" />
                 ) : (
                   <MicIcon className="text-white w-6 h-6" />
                 )}
               </div>
-              <span className="text-white font-medium">
+              <span className="text-white text-sm font-medium">
                 {isMuted ? 'Unmute' : 'Mute'}
               </span>
             </button>
           )}
-          
-          {/* Hang up button */}
+
           <button
             onClick={hangUp}
-            className="p-4 rounded-full bg-red-600/90 flex flex-col items-center hover:bg-red-700 transition-colors"
+            className="flex flex-col items-center group"
           >
-            <div className="w-12 h-12 bg-red-700 rounded-full flex items-center justify-center mb-2">
+            <div className="w-14 h-14 bg-red-600 rounded-full flex items-center justify-center mb-2 group-hover:bg-red-700 transition-colors">
               <PhoneOffIcon className="text-white w-6 h-6" />
             </div>
-            <span className="text-white font-medium">End Call</span>
+            <span className="text-white font-medium">End</span>
           </button>
-        </div>
-      )}
-      
-      {/* Call Information */}
-      {incomingCall && (
-        <div className="mt-4 text-center">
-          <p className="text-sm text-gray-400">
-            {incomingCall.callerName} is calling you
-          </p>
         </div>
       )}
     </div>
