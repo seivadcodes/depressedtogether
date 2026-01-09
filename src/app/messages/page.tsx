@@ -959,7 +959,7 @@ setCalleeName(selectedConversation.other_user_full_name);
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
-    type: 'initial_call',             // optional but helpful
+    type: 'incoming_call',             // optional but helpful
     toUserId: selectedConversation.other_user_id,
     callerId: currentUserId,          // ✅
     callerName: fromUserName,         // ✅
