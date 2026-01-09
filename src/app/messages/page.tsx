@@ -845,13 +845,21 @@ const trackActivity = useCallback(() => {
     messageInputRef.current?.focus();
   };
 const handleCallUser = async () => {
-  if (!selectedConversation || !currentUserId || !currentUserId) {
+  if (!selectedConversation || !currentUserId) {
     toast.error('Unable to start call');
     return;
   }
-  const roomName = selectedConversation.id; // Use conversation ID as room name
-  startCall(selectedConversation.other_user_id, 'audio', roomName);
-  toast.success(`Calling ${selectedConversation.other_user_full_name}...`);
+  
+  const roomName = `call_${selectedConversation.id}_${Date.now()}`;
+  const otherUserName = selectedConversation.other_user_full_name || 'User';
+  
+  // Start the call
+  await startCall(
+    selectedConversation.other_user_id, 
+    otherUserName, 
+    'audio', 
+    roomName
+  );
 };
   const scrollToMessage = (messageId: string) => {
     const messageElement = messageRefs.current.get(messageId);

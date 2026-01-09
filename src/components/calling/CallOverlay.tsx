@@ -1,68 +1,68 @@
-// src/components/calling/CallOverlay.tsx
 'use client';
-
+import { useEffect, useRef } from 'react';
 import { useCall } from '@/context/CallContext';
-import { Mic, MicOff, PhoneOff, ArrowDown } from 'lucide-react';
-import { useState, useEffect } from 'react';
-import { LiveKitRoom, RoomAudioRenderer, useLocalParticipant } from '@livekit/components-react';
 
-function MuteButton() {
-  const { localParticipant } = useLocalParticipant();
+// SVG Icons
+const MicIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
+    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+    <line x1="12" y1="19" x2="12" y2="22" />
+  </svg>
+);
 
-  const toggleMute = () => {
-    if (localParticipant) {
-      const newState = !localParticipant.isMicrophoneEnabled;
-      localParticipant.setMicrophoneEnabled(newState);
-      // No need to manage local state — LiveKit keeps source of truth
-    }
-  };
+const MicOffIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="1" y1="1" x2="23" y2="23" />
+    <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-6 0v4.34" />
+    <path d="M19 15v2a7 7 0 0 1-14 0v-2" />
+  </svg>
+);
 
-  // Derive UI state directly from LiveKit participant
-  const isMuted = !localParticipant?.isMicrophoneEnabled;
-
-  return (
-    <button
-      onClick={toggleMute}
-      style={{
-        width: '3.5rem',
-        height: '3.5rem',
-        borderRadius: '50%',
-        backgroundColor: isMuted ? '#ef4444' : '#4b5563',
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        border: 'none',
-        cursor: 'pointer',
-        transition: 'background-color 0.3s',
-        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
-      }}
-      onMouseOver={e => e.currentTarget.style.backgroundColor = isMuted ? '#dc2626' : '#374151'}
-      onMouseOut={e => e.currentTarget.style.backgroundColor = isMuted ? '#ef4444' : '#4b5563'}
-    >
-      {isMuted ? (
-        <MicOff style={{ width: '1.5rem', height: '1.5rem', color: 'white' }} />
-      ) : (
-        <Mic style={{ width: '1.5rem', height: '1.5rem', color: 'white' }} />
-      )}
-    </button>
-  );
-}
+const PhoneOffIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M10.68 13.31a1 1 0 0 0 1.32 1.32l4-4a1 1 0 0 0 0-1.32l-4-4a1 1 0 0 0-1.32 1.32L13.66 9H7a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h2.34l-2.97 2.97a1 1 0 0 0 1.32 1.32l4-4z" />
+  </svg>
+);
 
 export default function CallOverlay() {
   const {
     callState,
+    callType,
     incomingCall,
+    remoteAudioTrack,
+    isMuted,
+    calleeName,
+    setIsMuted,
     acceptCall,
     rejectCall,
     hangUp,
-    minimizeCall,
-    restoreCall,
-    currentCallToken,
-    currentCallRoom,
   } = useCall();
+  
+  const isInCall = ['calling', 'ringing', 'connecting', 'connected'].includes(callState);
+  const isCallActive = callState === 'connected';
+  
+  // Determine the name to display
+  const displayName = incomingCall 
+    ? incomingCall.callerName 
+    : calleeName || 'Calling...';
+  
+  const remoteAudioRef = useRef<HTMLAudioElement>(null);
+
+  // Attach remote audio track
+  useEffect(() => {
+    if (remoteAudioTrack && remoteAudioRef.current) {
+      remoteAudioTrack.attach(remoteAudioRef.current);
+      remoteAudioRef.current.play().catch(e => console.warn('Audio play failed:', e));
+      
+      return () => {
+        remoteAudioTrack.detach();
+      };
+    }
+  }, [remoteAudioTrack]);
 
   // Incoming call popup
-  if (callState === 'ringing' && incomingCall) {
+  if (callState === 'idle' && incomingCall) {
     return (
       <div style={{
         position: 'fixed',
@@ -125,125 +125,126 @@ export default function CallOverlay() {
     );
   }
 
-  // Outgoing call indicator
-  if (callState === 'calling') {
-    return (
-      <div style={{
-        position: 'fixed',
-        top: '20px',
-        right: '20px',
-        backgroundColor: '#334155',
-        color: 'white',
-        padding: '12px 24px',
-        borderRadius: '12px',
-        zIndex: 1000
-      }}>
-        Calling... <button onClick={hangUp} style={{ marginLeft: '10px', color: '#ef4444' }}>Cancel</button>
-      </div>
-    );
-  }
-
-  // Active call UI
-  if (callState === 'connected' && currentCallToken && currentCallRoom) {
+  // Ongoing or outgoing call UI
+  if (isInCall) {
     return (
       <div style={{
         position: 'fixed',
         inset: 0,
-        backgroundColor: 'rgba(15, 23, 42, 0.95)',
+        backgroundColor: '#0f172a',
         zIndex: 1000,
         display: 'flex',
         flexDirection: 'column',
-        padding: '2rem'
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '16px'
       }}>
+        {/* Hidden audio element for remote participant */}
+        <audio
+          ref={remoteAudioRef}
+          autoPlay
+          playsInline
+          style={{ display: 'none' }}
+        />
+        
+        {/* Main area */}
         <div style={{
+          position: 'relative',
+          width: '100%',
+          maxWidth: '800px',
+          height: '300px',
+          backgroundColor: '#1e293b',
+          borderRadius: '12px',
+          overflow: 'hidden',
+          marginBottom: '24px',
           display: 'flex',
-          justifyContent: 'space-between',
+          flexDirection: 'column',
           alignItems: 'center',
-          marginBottom: '2rem'
+          justifyContent: 'center'
         }}>
-          <h2 style={{ color: 'white', fontSize: '1.5rem' }}>
-            In Call with {incomingCall?.callerName || 'Participant'}
-          </h2>
+          {/* Call state display */}
+          <div style={{ textAlign: 'center', color: 'white' }}>
+            {callState === 'calling' && (
+              <>
+                <div style={{ fontSize: '48px', marginBottom: '12px' }}>📞</div>
+                <div>Calling</div>
+                <div style={{ fontWeight: '600', fontSize: '22px', marginTop: '6px' }}>
+                  {displayName}
+                </div>
+              </>
+            )}
+            
+            {callState === 'ringing' && (
+              <>
+                <div style={{ fontSize: '48px', marginBottom: '12px' }}>🔔</div>
+                <div>Incoming Call</div>
+                <div style={{ fontWeight: '600', fontSize: '22px', marginTop: '6px' }}>
+                  {displayName}
+                </div>
+              </>
+            )}
+            
+            {callState === 'connecting' && (
+              <>
+                <div style={{ fontSize: '48px', marginBottom: '12px' }}>🔄</div>
+                <div>Connecting...</div>
+                <div style={{ fontWeight: '600', fontSize: '22px', marginTop: '6px' }}>
+                  {displayName}
+                </div>
+              </>
+            )}
+            
+            {callState === 'connected' && (
+              <>
+                <div style={{ fontSize: '48px', marginBottom: '12px' }}>🔊</div>
+                <div>In call with</div>
+                <div style={{ fontWeight: '600', fontSize: '22px', marginTop: '6px' }}>
+                  {displayName}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+        
+        {/* Controls */}
+        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
           <button
-            onClick={minimizeCall}
+            onClick={() => setIsMuted(!isMuted)}
             style={{
-              background: 'none',
-              border: 'none',
-              color: '#94a3b8',
-              cursor: 'pointer',
-              fontSize: '14px',
+              width: '60px',
+              height: '60px',
+              borderRadius: '50%',
+              backgroundColor: isMuted ? '#ef4444' : '#374151',
               display: 'flex',
               alignItems: 'center',
-              gap: '4px'
+              justifyContent: 'center',
+              border: 'none',
+              cursor: 'pointer'
             }}
           >
-            <ArrowDown size={16} />
-            Minimize
+            {isMuted ? <MicOffIcon /> : <MicIcon />}
+          </button>
+          
+          <button
+            onClick={hangUp}
+            style={{
+              width: '60px',
+              height: '60px',
+              borderRadius: '50%',
+              backgroundColor: '#ef4444',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: 'none',
+              cursor: 'pointer'
+            }}
+          >
+            <PhoneOffIcon />
           </button>
         </div>
-
-        <LiveKitRoom
-          token={currentCallToken}
-          serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
-          audio={true}
-          video={false}
-          connect={true}
-          onDisconnected={() => hangUp()}
-          style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
-        >
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <MuteButton />
-          </div>
-          <div style={{ textAlign: 'center', marginTop: '2rem' }}>
-            <button
-              onClick={hangUp}
-              style={{
-                padding: '12px 24px',
-                backgroundColor: '#ef4444',
-                color: 'white',
-                borderRadius: '12px',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '16px',
-                fontWeight: '600'
-              }}
-            >
-              <PhoneOff size={20} style={{ marginRight: '8px' }} />
-              Hang Up
-            </button>
-          </div>
-          <RoomAudioRenderer />
-        </LiveKitRoom>
       </div>
     );
   }
-
-  // Minimized call
-  if (callState === 'minimized') {
-    return (
-      <button
-        onClick={restoreCall}
-        style={{
-          position: 'fixed',
-          bottom: '20px',
-          right: '20px',
-          backgroundColor: '#0ea5e9',
-          color: 'white',
-          padding: '8px 16px',
-          borderRadius: '20px',
-          border: 'none',
-          cursor: 'pointer',
-          zIndex: 1000,
-          display: 'flex',
-          alignItems: 'center',
-          gap: '6px',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
-        }}
-      >
-        📞 Return to call
-      </button>
-    );
-  }
-
+  
   return null;
 }
