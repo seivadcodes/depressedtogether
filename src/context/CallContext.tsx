@@ -1,7 +1,7 @@
 'use client';
 import { createContext, useContext, useState, ReactNode, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Room, RemoteAudioTrack, LocalAudioTrack } from 'livekit-client';
+import { Room, RemoteAudioTrack, LocalAudioTrack, Participant } from 'livekit-client';
 import toast from 'react-hot-toast';
 
 type CallState = 'idle' | 'calling' | 'ringing' | 'connecting' | 'connected' | 'ended';
@@ -30,7 +30,7 @@ type CallContextType = {
   participantName: string;
   participantAvatar?: string | null;
   callDuration: number;
-  acceptCall: (roomName: string) => Promise<void>;
+  acceptCall: (roomName: string, conversationId: string) => Promise<void>;
   rejectCall: () => void;
   hangUp: () => void;
   startCall: (calleeId: string, calleeName: string, type: CallType, roomName: string, conversationId: string, calleeAvatar?: string | null) => Promise<void>;
@@ -38,6 +38,7 @@ type CallContextType = {
   setIsCameraOff: (off: boolean) => void;
   setParticipantName: (name: string) => void;
   setParticipantAvatar: (avatar: string | null) => void;
+  currentConversationId: string | null;
 };
 
 const CallContext = createContext<CallContextType | undefined>(undefined);
@@ -64,12 +65,14 @@ export function CallProvider({
   const [participantName, setParticipantName] = useState('');
   const [participantAvatar, setParticipantAvatar] = useState<string | null>(null);
   const [callDuration, setCallDuration] = useState(0);
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const supabase = createClient();
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const remoteParticipantRef = useRef<Participant | null>(null);
 
-  // Timer management effect
+  // Timer management effect - only start when both participants are connected
   useEffect(() => {
-    if (callState === 'connected') {
+    if (callState === 'connected' && remoteAudioTrack) {
       timerRef.current = setInterval(() => {
         setCallDuration(prev => prev + 1);
       }, 1000);
@@ -86,7 +89,7 @@ export function CallProvider({
         timerRef.current = null;
       }
     };
-  }, [callState]);
+  }, [callState, remoteAudioTrack]);
 
   // Clear all call state when idle
   useEffect(() => {
@@ -96,6 +99,7 @@ export function CallProvider({
       setCalleeAvatar(null);
       setRemoteAudioTrack(null);
       setLocalAudioTrack(null);
+      setCurrentConversationId(null);
       
       if (timerRef.current) {
         clearInterval(timerRef.current);
@@ -104,7 +108,7 @@ export function CallProvider({
     }
   }, [callState]);
 
-  // Listen for incoming calls
+  // Listen for incoming calls and call ended events
   useEffect(() => {
     const channel = supabase
       .channel('call_notifications')
@@ -118,20 +122,30 @@ export function CallProvider({
           setCallState('ringing');
           setParticipantName(callerName);
           setParticipantAvatar(callerAvatar || null);
+          setCurrentConversationId(conversationId);
         }
       })
-      .on('broadcast', { event: 'call_rejected' }, () => {
-        if (callState === 'calling') {
+      .on('broadcast', { event: 'call_rejected' }, (payload) => {
+        const { conversationId } = payload.payload;
+        if (callState === 'calling' && currentConversationId === conversationId) {
           console.log('CallCheck: Call rejected by callee');
           toast.error('Call rejected');
           hangUp();
         }
       })
       .on('broadcast', { event: 'call_accepted' }, (payload) => {
-        if (callState === 'calling') {
+        const { roomName, conversationId } = payload.payload;
+        if (callState === 'calling' && currentConversationId === conversationId) {
           console.log('CallCheck: Call accepted by callee, connecting to room');
           setCallState('connecting');
-          connectToRoom(payload.payload.roomName);
+          connectToRoom(roomName);
+        }
+      })
+      .on('broadcast', { event: 'call_ended' }, (payload) => {
+        const { conversationId } = payload.payload;
+        if (currentConversationId === conversationId && callState !== 'idle') {
+          console.log('CallCheck: Received call ended event');
+          hangUp();
         }
       })
       .subscribe();
@@ -139,7 +153,7 @@ export function CallProvider({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [callState, supabase]);
+  }, [callState, supabase, currentConversationId]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -196,10 +210,19 @@ export function CallProvider({
       const room = new Room();
       
       // Handle track subscriptions
-      room.on('trackSubscribed', (track) => {
+      room.on('trackSubscribed', (track, _, participant) => {
         console.log('CallCheck: Track subscribed', track.kind);
         if (track.kind === 'audio' && track instanceof RemoteAudioTrack) {
           setRemoteAudioTrack(track);
+          remoteParticipantRef.current = participant;
+        }
+      });
+      
+      // Handle remote participant disconnection
+      room.on('participantDisconnected', (participant) => {
+        if (participant === remoteParticipantRef.current) {
+          console.log('CallCheck: Remote participant disconnected');
+          hangUp();
         }
       });
       
@@ -247,6 +270,7 @@ export function CallProvider({
       setParticipantName(calleeName);
       setParticipantAvatar(avatarUrl || null);
       setCallState('calling');
+      setCurrentConversationId(conversationId);
       
       // Get current user info
       const { data: { session } } = await supabase.auth.getSession();
@@ -279,7 +303,7 @@ export function CallProvider({
     }
   };
 
-  const acceptCall = async (roomName: string) => {
+  const acceptCall = async (roomName: string, conversationId: string) => {
     try {
       console.log('CallCheck: Accepting call for room', roomName);
       
@@ -293,6 +317,7 @@ export function CallProvider({
       setCallType(incomingCall.callType);
       setParticipantName(incomingCall.callerName);
       setParticipantAvatar(incomingCall.callerAvatar || null);
+      setCurrentConversationId(conversationId);
       
       // Notify caller that call was accepted
       const { data: { session } } = await supabase.auth.getSession();
@@ -303,6 +328,7 @@ export function CallProvider({
         event: 'call_accepted',
         payload: {
           roomName: roomName,
+          conversationId,
         },
       });
       
@@ -331,15 +357,29 @@ export function CallProvider({
     supabase.channel('call_notifications').send({
       type: 'broadcast',
       event: 'call_rejected',
-      payload: {},
+      payload: {
+        conversationId: incomingCall.conversationId,
+      },
     });
     
     setIncomingCall(null);
     setCallState('idle');
+    setCurrentConversationId(null);
   };
 
   const hangUp = useCallback(() => {
     console.log('CallCheck: Hanging up call, current state:', callState);
+    
+    // Notify other participant
+    if (currentConversationId && callState !== 'idle') {
+      supabase.channel('call_notifications').send({
+        type: 'broadcast',
+        event: 'call_ended',
+        payload: {
+          conversationId: currentConversationId,
+        },
+      });
+    }
     
     if (callRoom) {
       // Unpublish all tracks
@@ -362,13 +402,14 @@ export function CallProvider({
     setRemoteAudioTrack(null);
     setLocalAudioTrack(null);
     setCallState('ended');
+    remoteParticipantRef.current = null;
     
     // Return to idle state after a brief delay
     setTimeout(() => {
       setCallState('idle');
       setCallDuration(0); // Reset duration after hangup completes
     }, 500);
-  }, [callRoom, callState]);
+  }, [callRoom, callState, currentConversationId, supabase]);
 
   return (
     <CallContext.Provider
@@ -394,6 +435,7 @@ export function CallProvider({
         setIsCameraOff,
         setParticipantName,
         setParticipantAvatar,
+        currentConversationId,
       }}
     >
       {children}

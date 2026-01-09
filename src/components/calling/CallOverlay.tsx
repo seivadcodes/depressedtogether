@@ -19,9 +19,9 @@ const MicOffIcon = () => (
   </svg>
 );
 
-const PhoneOffIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M10.68 13.31a1 1 0 0 0 1.32 1.32l4-4a1 1 0 0 0 0-1.32l-4-4a1 1 0 0 0-1.32 1.32L13.66 9H7a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h2.34l-2.97 2.97a1 1 0 0 0 1.32 1.32l4-4z" />
+const PhoneIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56-.35-.12-.74-.03-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z"/>
   </svg>
 );
 
@@ -58,6 +58,7 @@ export default function CallOverlay() {
     acceptCall,
     rejectCall,
     hangUp,
+    currentConversationId,
   } = useCall();
   
   const [isAccepting, setIsAccepting] = useState(false);
@@ -83,7 +84,7 @@ export default function CallOverlay() {
     if (!incomingCall) return;
     setIsAccepting(true);
     try {
-      await acceptCall(incomingCall.roomName);
+      await acceptCall(incomingCall.roomName, incomingCall.conversationId);
     } catch (error) {
       console.error('CallCheck: Error accepting call', error);
     } finally {
@@ -377,7 +378,7 @@ export default function CallOverlay() {
             </div>
             
             <div style={{ fontSize: '20px', fontWeight: '600', color: 'white', marginBottom: '4px' }}>
-              In call with
+              Connected
             </div>
             <div style={{ fontWeight: '700', fontSize: '28px', color: 'white' }}>
               {participantName || 'User'}
@@ -482,7 +483,7 @@ export default function CallOverlay() {
               boxShadow: '0 4px 12px rgba(239, 68, 68, 0.4)'
             }}
           >
-            {isHangingUp ? <LoadingSpinner /> : <PhoneOffIcon />}
+            {isHangingUp ? <LoadingSpinner /> : <PhoneIcon />}
           </button>
         </div>
       )}
