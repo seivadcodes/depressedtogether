@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import Picker from '@emoji-mart/react';
 import data from '@emoji-mart/data';
+import { useRouter } from 'next/navigation';
 
 // Minimal type for emoji object — avoids import issues and satisfies ESLint
 interface EmojiMartEmoji {
@@ -30,6 +31,7 @@ export default function SendMessageOverlay({
   const [isSending, setIsSending] = useState(false);
   const supabase = createClient();
   const inputRef = useRef<HTMLInputElement>(null);
+  const router = useRouter(); 
 
   useEffect(() => {
     if (!isOpen) return;
@@ -86,35 +88,38 @@ export default function SendMessageOverlay({
   }, [isOpen, targetUserId, targetName, onClose, supabase]);
 
   const handleSend = async () => {
-    if (!message.trim() || !conversationId) return;
-    
-    setIsSending(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) {
-        onClose();
-        return;
-      }
-      
-      const { error } = await supabase
-        .from('messages')
-        .insert({
-          conversation_id: conversationId,
-          sender_id: session.user.id,
-          content: message.trim(),
-        });
-        
-      if (error) throw error;
-      
-      setMessage('');
+  if (!message.trim() || !conversationId) return;
+
+  setIsSending(true);
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) {
       onClose();
-    } catch (err) {
-      console.error('Failed to send message:', err);
-      alert('Failed to send message. Please try again.');
-    } finally {
-      setIsSending(false);
+      return;
     }
-  };
+
+    const { error } = await supabase
+      .from('messages')
+      .insert({
+        conversation_id: conversationId,
+        sender_id: session.user.id,
+        content: message.trim(),
+      });
+
+    if (error) throw error;
+
+    // ✅ Redirect to messages page
+    router.push(`/messages/${conversationId}`);
+    
+    // Close overlay after navigation (optional, but safe)
+    onClose();
+  } catch (err) {
+    console.error('Failed to send message:', err);
+    alert('Failed to send message. Please try again.');
+  } finally {
+    setIsSending(false);
+  }
+};
 
   const handleEmojiSelect = (emoji: EmojiMartEmoji) => {
     setMessage(prev => prev + emoji.native);
@@ -253,7 +258,7 @@ export default function SendMessageOverlay({
               </button>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingTop: '60px' }}>
               <div className="emoji-picker-container" style={{ position: 'relative' }}>
                 <div style={{ 
                   display: 'flex', 

@@ -8,9 +8,10 @@ import Picker from '@emoji-mart/react';
 import data from '@emoji-mart/data';
 import { toast } from 'react-hot-toast';
 import CallOverlay from '@/components/calling/CallOverlay';
-import { Room, RoomEvent, LocalTrack, RemoteTrack, RemoteParticipant } from 'livekit-client';
+import Image from 'next/image';
 
-import { joinCallRoom } from '@/lib/livekit';
+
+
 import { useCall } from '@/context/CallContext';
 import { consumePendingConversation } from '@/lib/conversationHandoff';
 type User = {
@@ -123,13 +124,13 @@ export default function MessagesPage() {
 
   const [otherUserPresenceLoaded, setOtherUserPresenceLoaded] = useState(false);
   
-  const [filePreview, setFilePreview] = useState<string | null>(null);
+
   const [uploading, setUploading] = useState(false);
   const [showConversationMenu, setShowConversationMenu] = useState<string | null>(null);
   const [showMessageMenu, setShowMessageMenu] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const lastActivityRef = useRef(Date.now());
-const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
   // New state for long press/reactions
   const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null);
   const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null);
@@ -148,12 +149,9 @@ const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const supabase = useMemo(() => createClient(), []);
 
   const {
-  callState,
-  incomingCall,
+ 
   startCall,   // 👈 this is the key new function
-  acceptCall,
-  rejectCall,
-  hangUp,
+  
 } = useCall();
   
 
@@ -222,7 +220,7 @@ useEffect(() => {
         setCurrentUserId(userId);
 
         // Load other users (exclude current)
-        const { data: profiles, error: profilesError } = await supabase
+        const { data: profiles,  } = await supabase
           .from('profiles')
           .select('id, full_name, avatar_url, last_seen, is_online')
           .neq('id', userId);
@@ -230,7 +228,7 @@ useEffect(() => {
         setUsers(profiles || []);
 
         // Load conversations
-        const { data: convData, error: convError } = await supabase.rpc('get_user_conversations', {
+        const { data: convData,} = await supabase.rpc('get_user_conversations', {
           user_id: userId,
         });
 
@@ -358,13 +356,7 @@ useEffect(() => {
     }
   }, [messages]);
 
-  useEffect(() => {
-  const userId = consumePendingConversation();
-  if (userId && currentUserId) {
-    handleStartNewConversation(userId);
-  }
-}, [currentUserId]); 
-
+ 
 
 
   // Handle long press for reactions (only on others' messages)
@@ -504,75 +496,79 @@ useEffect(() => {
       toast.error('Failed to load conversation');
     }
   };
+ 
 
-  const handleStartNewConversation = async (userId: string) => {
-    if (!currentUserId) return;
-    setIsOpen(false);
+  const handleStartNewConversation = useCallback(async (userId: string) => {
+  if (!currentUserId) return;
+  setIsOpen(false);
+  try {
+    // Check for existing conversation
+    const { data: existing } = await supabase
+      .from('conversations')
+      .select('id')
+      .or(
+        `and(user1_id.eq.${currentUserId},user2_id.eq.${userId}),` +
+        `and(user1_id.eq.${userId},user2_id.eq.${currentUserId})`
+      )
+      .maybeSingle();
 
-    try {
-      // Check for existing conversation
-      const { data: existing } = await supabase
+    let convId: string;
+    if (existing) {
+      convId = existing.id;
+    } else {
+      const user1 = currentUserId < userId ? currentUserId : userId;
+      const user2 = currentUserId > userId ? currentUserId : userId;
+      const { data: newConv, error: convError } = await supabase
         .from('conversations')
+        .insert({ user1_id: user1, user2_id: user2 })
         .select('id')
-        .or(
-          `and(user1_id.eq.${currentUserId},user2_id.eq.${userId}),` +
-          `and(user1_id.eq.${userId},user2_id.eq.${currentUserId})`
-        )
-        .maybeSingle();
-
-      let convId: string;
-      if (existing) {
-        convId = existing.id;
-      } else {
-        // Create new conversation
-        const user1 = currentUserId < userId ? currentUserId : userId;
-        const user2 = currentUserId > userId ? currentUserId : userId;
-        const { data: newConv, error: convError } = await supabase
-          .from('conversations')
-          .insert({ user1_id: user1, user2_id: user2 })
-          .select('id')
-          .single();
-
-        if (convError) throw convError;
-        convId = newConv!.id;
-      }
-
-      // Get other user's profile
-      const { data: otherUser, error: userError } = await supabase
-        .from('profiles')
-        .select('id, full_name, avatar_url, last_seen, is_online')
-        .eq('id', userId)
         .single();
-
-      if (userError) throw userError;
-
-      const newConv: ConversationSummary = {
-        id: convId,
-        other_user_id: otherUser.id,
-        other_user_full_name: otherUser.full_name,
-        other_user_avatar_url: otherUser.avatar_url,
-        other_user_last_seen: otherUser.last_seen,
-        other_user_is_online: otherUser.is_online,
-      };
-
-      // Update conversations list
-      setConversations(prev => {
-        if (!prev.some(c => c.id === convId)) {
-          return [newConv, ...prev];
-        }
-        return prev;
-      });
-
-      setSelectedConversation(newConv);
-      setMessages([]);
-      if (isMobileView) {
-        setShowChatView(true);
-      }
-    } catch (err) {
-      console.error('Create conversation error:', err);
-      toast.error('Failed to start conversation');
+      if (convError) throw convError;
+      convId = newConv!.id;
     }
-  };
+
+    // Get other user's profile
+    const { data: otherUser, error: userError } = await supabase
+      .from('profiles')
+      .select('id, full_name, avatar_url, last_seen, is_online')
+      .eq('id', userId)
+      .single();
+    if (userError) throw userError;
+
+    const newConv: ConversationSummary = {
+      id: convId,
+      other_user_id: otherUser.id,
+      other_user_full_name: otherUser.full_name,
+      other_user_avatar_url: otherUser.avatar_url || undefined,
+      other_user_last_seen: otherUser.last_seen || undefined,
+      other_user_is_online: otherUser.is_online || false,
+    };
+
+    setConversations((prev) => {
+      if (!prev.some((c) => c.id === convId)) {
+        return [newConv, ...prev];
+      }
+      return prev;
+    });
+
+    setSelectedConversation(newConv);
+    setMessages([]);
+    if (isMobileView) {
+      setShowChatView(true);
+    }
+  } catch (err) {
+    console.error('Create conversation error:', err);
+    toast.error('Failed to start conversation');
+  }
+}, [currentUserId, isMobileView, supabase]);
+
+useEffect(() => {
+  const userId = consumePendingConversation();
+  if (userId && currentUserId) {
+    handleStartNewConversation(userId);
+  }
+}, [currentUserId, handleStartNewConversation]); 
+
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -641,17 +637,7 @@ useEffect(() => {
       setIsSending(false);
     }
   };
-const updateLastSeen = useCallback(async () => {
-  if (!currentUserId || document.hidden) return;
-  try {
-    await supabase
-      .from(' profiles')
-      .update({ last_seen: new Date().toISOString() })
-      .eq('id', currentUserId);
-  } catch (err) {
-    console.warn('Failed to update last_seen:', err);
-  }
-}, [currentUserId, supabase]);
+
 
 // Mark user as active
 const trackActivity = useCallback(() => {
@@ -843,7 +829,7 @@ const trackActivity = useCallback(() => {
       toast.error('Failed to send file');
     } finally {
       setUploading(false);
-      setFilePreview(null);
+      
     }
   };
 
@@ -930,8 +916,8 @@ const handleCallUser = async () => {
   if (isMobileView && showChatView && selectedConversation) {
 
  const {
-  other_user_full_name,
-  other_user_avatar_url
+  
+  
 } = selectedConversation;
 // Use the live-updated state instead of stale conversation data
 const safeLastSeen = otherUserLastSeen;
