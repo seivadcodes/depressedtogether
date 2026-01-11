@@ -2,8 +2,8 @@
 'use client';
 
 import Link from 'next/link';
-import { Home, User, LogOut, Phone, X } from 'lucide-react';
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { Home, User, LogOut, Phone, X, MessageSquare, Bell } from 'lucide-react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import Image from 'next/image';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -15,6 +15,12 @@ type CallInvitation = {
   room_id: string;
 };
 
+// Define interface for conversation items from RPC
+interface ConversationItem {
+  unread_count: number;
+  // Add other expected properties if needed
+}
+
 export default function Header() {
   const { user, loading: authLoading, signOut } = useAuth();
   const router = useRouter();
@@ -23,6 +29,12 @@ export default function Header() {
   const [profileLoading, setProfileLoading] = useState(true);
   const [incomingCall, setIncomingCall] = useState<CallInvitation | null>(null);
   const [showCallBanner, setShowCallBanner] = useState(false);
+  const [unreadMessages, setUnreadMessages] = useState(0);
+  const [isUnreadLoading, setIsUnreadLoading] = useState(true);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [wsConnected, setWsConnected] = useState(false);
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const supabase = useMemo(() => createClient(), []);
@@ -54,24 +66,122 @@ export default function Header() {
     fetchProfile();
   }, [user, supabase]);
 
-  // 🔔 Listen for incoming call invitations
-  useEffect(() => {
-    if (!user?.id) return;
+  // 🔔 Fetch unread messages count
+  const fetchUnreadCount = useCallback(async () => {
+  if (!user?.id) {
+    setUnreadMessages(0);
+    setIsUnreadLoading(false);
+    return;
+  }
 
-    const userId = user.id;
-    const channel = supabase
-      .channel(`user:${userId}`)
-      .on('broadcast', { event: 'call_invitation' }, (payload) => {
-        const { caller_id, caller_name, room_id } = payload.payload;
-        setIncomingCall({ caller_id, caller_name, room_id });
-        setShowCallBanner(true);
-      })
-      .subscribe();
+  setIsUnreadLoading(true);
+  try {
+    const { data, error } = await supabase.rpc('get_user_conversations_with_unread', {
+      p_user_id: user.id,
+    });
+
+    if (error) throw error;
+
+    // Type assertion: we know the shape from our SQL function
+    const conversations = (data as ConversationItem[]) || [];
+
+    if (!Array.isArray(conversations)) {
+      console.warn('Unexpected response format from get_user_conversations_with_unread');
+      setUnreadMessages(0);
+      return;
+    }
+
+    const totalUnread = conversations.reduce((sum, conv) => 
+      sum + (conv.unread_count || 0), 0);
+    
+    setUnreadMessages(totalUnread);
+  } catch (err) {
+    console.error('Error fetching unread messages:', err);
+    setUnreadMessages(0);
+  } finally {
+    setIsUnreadLoading(false);
+  }
+}, [user?.id, supabase]);
+
+  // Initial fetch and refetch on window focus
+  useEffect(() => {
+    fetchUnreadCount();
+    
+    const handleFocus = () => {
+      if (document.visibilityState === 'visible') {
+        fetchUnreadCount();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleFocus);
 
     return () => {
-      supabase.removeChannel(channel);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
     };
-  }, [user?.id, supabase]);
+  }, [fetchUnreadCount]);
+
+  // Inside Header.tsx
+useEffect(() => {
+  if (!user?.id) return;
+
+  // Clean up previous connection
+  if (wsRef.current) {
+    wsRef.current.close();
+  }
+
+  // Connect to your working WebSocket server
+  const wsUrl = `ws://178.128.210.229:8084/?userId=${user.id}`;
+  const socket = new WebSocket(wsUrl);
+
+  socket.onopen = () => {
+    console.log('HeaderCode WebSocket connected');
+    setWsConnected(true);
+    fetchUnreadCount(); // Initial sync
+  };
+
+  socket.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data.toString());
+
+      if (data.type === 'new_message') {
+        fetchUnreadCount();
+      }
+
+      if (data.type === 'call_invitation') {
+        setIncomingCall({
+          caller_id: data.caller_id,
+          caller_name: data.caller_name,
+          room_id: data.room_id,
+        });
+        setShowCallBanner(true);
+      }
+
+      if (data.type === 'call_declined') {
+        setShowCallBanner(false);
+      }
+    } catch (err) {
+      console.error('HeaderCode WS message error:', err);
+    }
+  };
+
+  socket.onclose = () => {
+    console.log('HeaderCode WebSocket disconnected');
+    setWsConnected(false);
+  };
+
+  socket.onerror = (err) => {
+    console.error('HeaderCode WebSocket error:', err);
+    setWsConnected(false);
+  };
+
+  wsRef.current = socket;
+
+  return () => {
+    socket.close();
+  };
+}, [user?.id, fetchUnreadCount]);
 
   // Close menu on outside click
   useEffect(() => {
@@ -87,6 +197,32 @@ export default function Header() {
     };
   }, []);
 
+  // Add this useEffect to Header.tsx (place it after the other useEffects)
+useEffect(() => {
+  if (!user?.id) return;
+  
+  // Handle unread count updates from other components
+  const handleUnreadUpdate = (event: Event) => {
+    const customEvent = event as CustomEvent;
+    const newCount = customEvent.detail;
+    
+    // Only update if the count actually changed
+    if (typeof newCount === 'number' && newCount !== unreadMessages) {
+      setUnreadMessages(newCount);
+    }
+  };
+
+  // Add the event listener
+  window.addEventListener('unreadUpdate', handleUnreadUpdate);
+
+  // Initial fetch
+  fetchUnreadCount();
+
+  return () => {
+    window.removeEventListener('unreadUpdate', handleUnreadUpdate);
+  };
+}, [user?.id, fetchUnreadCount, unreadMessages]);
+
   // Compute user initials safely
   const initials = useMemo(() => {
     if (!user) return 'U';
@@ -99,6 +235,10 @@ export default function Header() {
   }, [user, profile]);
 
   const handleLogout = async () => {
+    // Close WebSocket cleanly
+    if (wsRef.current) {
+      wsRef.current.close(1000, "User logged out");
+    }
     await signOut();
     setIsMenuOpen(false);
   };
@@ -134,13 +274,14 @@ export default function Header() {
         status: 'declined',
       });
 
-    // Notify caller (optional but recommended)
-    const channel = supabase.channel(`user:${incomingCall.caller_id}`);
-    await channel.send({
-      type: 'broadcast',
-      event: 'call_declined',
-      payload: { by: user.id },
-    });
+    // Notify caller via WebSocket
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'call_declined',
+        room_id: incomingCall.room_id,
+        by: user.id
+      }));
+    }
 
     setShowCallBanner(false);
   };
@@ -194,126 +335,233 @@ export default function Header() {
           </Link>
 
           {user ? (
-            <div ref={menuRef} style={{ position: 'relative' }}>
-              <button
-                onClick={() => setIsMenuOpen(!isMenuOpen)}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              {/* Messages Icon with Unread Badge */}
+              <Link
+                href="/messages"
                 style={{
-                  width: '2rem',
-                  height: '2rem',
-                  borderRadius: '9999px',
+                  position: 'relative',
+                  display: 'flex',
+                  alignItems: 'center',
+                  color: 'white',
+                  textDecoration: 'none',
+                  padding: '0.5rem',
+                  borderRadius: '0.375rem',
+                  transition: 'background-color 0.2s'
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)')}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                aria-label="Messages"
+              >
+                <MessageSquare size={20} color="white" />
+                
+                {/* Unread messages badge */}
+                {!isUnreadLoading && unreadMessages > 0 && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '-4px',
+                    right: '-4px',
+                    backgroundColor: '#ef4444',
+                    color: 'white',
+                    borderRadius: '9999px',
+                    fontSize: '0.625rem',
+                    minWidth: '16px',
+                    height: '16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontWeight: 'bold',
+                    padding: '0 3px',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.2)'
+                  }}>
+                    {unreadMessages > 9 ? '9+' : unreadMessages}
+                  </div>
+                )}
+              </Link>
+
+              {/* Notification Bell Icon */}
+              <button
+                onClick={() => {
+                  router.push('/notifications');
+                }}
+                style={{
+                  position: 'relative',
+                  background: 'none',
+                  border: 'none',
+                  color: 'white',
+                  cursor: 'pointer',
+                  padding: '0.5rem',
+                  borderRadius: '0.375rem',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  border: 'none',
-                  cursor: 'pointer',
-                  backgroundColor: 'transparent',
-                  padding: 0,
+                  transition: 'background-color 0.2s'
                 }}
-                aria-label="User menu"
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)')}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                aria-label="Notifications"
               >
-                {profileLoading ? (
-                  <div
-                    style={{
-                      width: '2rem',
-                      height: '2rem',
-                      borderRadius: '9999px',
-                      backgroundColor: '#60a5fa',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'white',
-                      fontWeight: 500,
-                      fontSize: '0.875rem',
-                    }}
-                  >
-                    {initials}
-                  </div>
-                ) : profile?.avatar_url ? (
-                  <Image
-                    unoptimized
-                    src={profile.avatar_url}
-                    alt="Your avatar"
-                    width={32}
-                    height={32}
-                    style={{
-                      width: '2rem',
-                      height: '2rem',
-                      borderRadius: '9999px',
-                      objectFit: 'cover',
-                      border: '2px solid white',
-                    }}
-                  />
-                ) : (
-                  <div
-                    style={{
-                      width: '2rem',
-                      height: '2rem',
-                      borderRadius: '9999px',
-                      backgroundColor: '#60a5fa',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'white',
-                      fontWeight: 500,
-                      fontSize: '0.875rem',
-                    }}
-                  >
-                    {initials}
+                <Bell size={20} color="white" />
+                
+                {/* Notification badge - using unread notifications count */}
+                {unreadNotifications > 0 && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '-4px',
+                    right: '-4px',
+                    backgroundColor: '#fbbf24',
+                    color: 'white',
+                    borderRadius: '9999px',
+                    fontSize: '0.625rem',
+                    minWidth: '16px',
+                    height: '16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontWeight: 'bold',
+                    padding: '0 3px',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.2)'
+                  }}>
+                    {unreadNotifications > 9 ? '9+' : unreadNotifications}
                   </div>
                 )}
               </button>
 
-              {isMenuOpen && (
-                <div
+              {/* User Menu */}
+              <div ref={menuRef} style={{ position: 'relative' }}>
+                <button
+                  onClick={() => setIsMenuOpen(!isMenuOpen)}
                   style={{
-                    position: 'absolute',
-                    right: 0,
-                    top: '2.5rem',
-                    width: '12rem',
-                    backgroundColor: 'white',
-                    border: '1px solid #e2e2e2',
-                    borderRadius: '0.5rem',
-                    boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)',
-                    padding: '0.25rem 0',
-                    zIndex: 50,
+                    width: '2rem',
+                    height: '2rem',
+                    borderRadius: '9999px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: 'none',
+                    cursor: 'pointer',
+                    backgroundColor: 'transparent',
+                    padding: 0,
                   }}
+                  aria-label="User menu"
                 >
-                  <Link
-                    href="/dashboard"
+                  {profileLoading ? (
+                    <div
+                      style={{
+                        width: '2rem',
+                        height: '2rem',
+                        borderRadius: '9999px',
+                        backgroundColor: '#60a5fa',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'white',
+                        fontWeight: 500,
+                        fontSize: '0.875rem',
+                      }}
+                    >
+                      {initials}
+                    </div>
+                  ) : profile?.avatar_url ? (
+                    <Image
+                      unoptimized
+                      src={profile.avatar_url}
+                      alt="Your avatar"
+                      width={32}
+                      height={32}
+                      style={{
+                        width: '2rem',
+                        height: '2rem',
+                        borderRadius: '9999px',
+                        objectFit: 'cover',
+                        border: '2px solid white',
+                      }}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        width: '2rem',
+                        height: '2rem',
+                        borderRadius: '9999px',
+                        backgroundColor: '#60a5fa',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'white',
+                        fontWeight: 500,
+                        fontSize: '0.875rem',
+                      }}
+                    >
+                      {initials}
+                    </div>
+                  )}
+                </button>
+
+                {isMenuOpen && (
+                  <div
                     style={{
-                      display: 'block',
-                      padding: '0.5rem 1rem',
-                      fontSize: '0.875rem',
-                      color: '#3f3f46',
-                      textDecoration: 'none',
+                      position: 'absolute',
+                      right: 0,
+                      top: '2.5rem',
+                      width: '12rem',
+                      backgroundColor: 'white',
+                      border: '1px solid #e2e2e2',
+                      borderRadius: '0.5rem',
+                      boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)',
+                      padding: '0.25rem 0',
+                      zIndex: 50,
                     }}
-                    onClick={() => setIsMenuOpen(false)}
                   >
-                    Dashboard
-                  </Link>
-                  <button
-                    onClick={handleLogout}
-                    style={{
-                      width: '100%',
-                      textAlign: 'left',
-                      padding: '0.5rem 1rem',
-                      fontSize: '0.875rem',
-                      color: '#3f3f46',
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.5rem',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f4f4f5')}
-                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-                  >
-                    <LogOut size={16} />
-                    Sign Out
-                  </button>
-                </div>
-              )}
+                    <Link
+                      href="/dashboard"
+                      style={{
+                        display: 'block',
+                        padding: '0.5rem 1rem',
+                        fontSize: '0.875rem',
+                        color: '#3f3f46',
+                        textDecoration: 'none',
+                      }}
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      Dashboard
+                    </Link>
+                    <Link
+                      href="/notifications"
+                      style={{
+                        display: 'block',
+                        padding: '0.5rem 1rem',
+                        fontSize: '0.875rem',
+                        color: '#3f3f46',
+                        textDecoration: 'none',
+                      }}
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      Notifications
+                    </Link>
+                    <button
+                      onClick={handleLogout}
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '0.5rem 1rem',
+                        fontSize: '0.875rem',
+                        color: '#3f3f46',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f4f4f5')}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                    >
+                      <LogOut size={16} />
+                      Sign Out
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
             <Link
@@ -423,7 +671,7 @@ export default function Header() {
             right: 0,
             bottom: 0,
             zIndex: 40,
-            backgroundColor: 'transparent',
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
           }}
           onClick={() => setIsMenuOpen(false)}
         ></div>

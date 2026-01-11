@@ -1,7 +1,7 @@
 // app/messages/page.tsx
 'use client';
 
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import Picker from '@emoji-mart/react';
@@ -30,6 +30,7 @@ type ConversationSummary = {
   last_message?: string | null;
   last_message_at?: string | null;
   other_user_last_seen?: string;
+  unread_count?: number;
   other_user_is_online?: boolean;
 };
 
@@ -145,6 +146,9 @@ export default function MessagesPage() {
   const [isMobileView, setIsMobileView] = useState(false);
   const [showChatView, setShowChatView] = useState(false);
 
+ // In Header.tsx
+const currentUserIdRef = useRef<string | null>(null); 
+
   const messageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -233,9 +237,16 @@ export default function MessagesPage() {
         setUsers(profiles || []);
 
         // Load conversations
-        const { data: convData, } = await supabase.rpc('get_user_conversations', {
-          user_id: userId,
-        });
+     const { data: convData, error: convError } = await supabase.rpc('get_user_conversations_with_unread', {
+  p_user_id: userId,
+});
+
+if (convError) {
+  console.error('Failed to load conversations:', convError);
+  // handle error
+} else {
+  setConversations(convData || []);
+}
 
         setConversations(convData || []);
         setIsLoading(false);
@@ -355,11 +366,13 @@ export default function MessagesPage() {
   }, []);
 
   // Scroll to bottom when messages change
-  useEffect(() => {
-    if (messagesEndRef.current && messages.length > 0) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [messages]);
+  // Replace your existing scroll effect with this:
+useLayoutEffect(() => {
+  if (messagesEndRef.current && messages.length > 0) {
+    // Instant scroll on initial load — no animation = no visible jump
+    messagesEndRef.current.scrollIntoView({ behavior: 'auto' });
+  }
+}, [messages.length]); // Only depend on length to avoid unnecessary calls
 
 
   useEffect(() => {
@@ -382,6 +395,21 @@ export default function MessagesPage() {
       try {
         const data = JSON.parse(event.data.toString());
         console.log('📩 Received message via WS:', data);
+
+         if (data.type === 'new_message' && data.conversationId) {
+      console.log(`💬 New message in conversation: ${data.conversationId}`);
+      
+      // If this is the active conversation, mark as read immediately
+      if (selectedConversation?.id === data.conversationId) {
+        await loadMessagesForConversation(data.conversationId);
+        // Mark as read since we're actively viewing this conversation
+        await markConversationAsRead(data.conversationId);
+      } else {
+        // For inactive conversations, just refresh the list
+        fetchConversations();
+      }
+      return;
+    }
 
         // Handle user presence updates
         if (data.type === 'user_presence') {
@@ -416,6 +444,8 @@ export default function MessagesPage() {
 
             // Clone reactions to avoid mutation
             const updatedReactions = { ...msg.reactions };
+            const totalUnread = conversations.reduce((sum, conv) => sum + (conv.unread_count || 0), 0);
+window.dispatchEvent(new CustomEvent('unreadUpdate', { detail: totalUnread }));
 
             if (data.action === 'add') {
               // Add reaction for this user
@@ -786,56 +816,105 @@ export default function MessagesPage() {
     }
   };
 
-  const openConversation = async (conv: ConversationSummary) => {
-    if (!currentUserId) return;
-
-    setSelectedConversation(conv);
-    setMessages([]);
-    setReplyingTo(null);
-    setShowConversationMenu(null);
-
-    if (isMobileView) {
-      setShowChatView(true);
+const markConversationAsRead = async (conversationId: string) => {
+  if (!currentUserId) return;
+  
+  try {
+    const { error } = await supabase.rpc('mark_conversation_read', {
+      p_conv_id: conversationId,
+      p_user_id: currentUserId,
+    });
+    
+    if (error) {
+      console.warn('Failed to mark conversation as read:', error);
+      return;
     }
+    
+    // Update conversations state
+    setConversations(prev => prev.map(conv =>
+      conv.id === conversationId ? { ...conv, unread_count: 0 } : conv
+    ));
+    
+    // Store the conversation ID to trigger the effect
+    setLastReadConversationId(conversationId);
+  } catch (err) {
+    console.error('Unexpected error in markConversationAsRead:', err);
+  }
+};
 
-    try {
-      // Get all messages, including those marked as deleted
-      const { data: allMessages, error: msgError } = await supabase
-        .from('messages')
-        .select(`
-          *,
-          sender:sender_id (
-            full_name,
-            avatar_url
-          )
-        `)
-        .eq('conversation_id', conv.id)
-        .order('created_at', { ascending: true });
+// Add this new state
+const [lastReadConversationId, setLastReadConversationId] = useState<string | null>(null);
 
-      if (msgError) throw msgError;
+// Add this effect to handle the event dispatch after render
+useEffect(() => {
+  if (lastReadConversationId && conversations.length > 0) {
+    // Calculate total unread after state has updated
+    const totalUnread = conversations.reduce((sum, conv) => 
+      sum + (conv.unread_count || 0), 0);
+    
+    // Dispatch event safely after render
+    window.dispatchEvent(new CustomEvent('unreadUpdate', { detail: totalUnread }));
+    
+    // Reset the trigger
+    setLastReadConversationId(null);
+  }
+}, [lastReadConversationId, conversations]);
 
-      // Filter messages based on deletion status
-      const filteredMessages = (allMessages || []).filter(msg => {
-        // If message is deleted for everyone, always show it as tombstone
-        if (msg.deleted_for_everyone) {
-          return true;
-        }
 
-        // If message is deleted for me, hide it
-        if (msg.deleted_for_me?.includes(currentUserId)) {
-          return false;
-        }
+ const openConversation = async (conv: ConversationSummary) => {
+  if (!currentUserId) return;
 
+  setSelectedConversation(conv);
+  setMessages([]);
+  setReplyingTo(null);
+  setShowConversationMenu(null);
+
+  if (isMobileView) {
+    setShowChatView(true);
+  }
+
+  try {
+    // Get all messages, including those marked as deleted
+    const { data: allMessages, error: msgError } = await supabase
+      .from('messages')
+      .select(`
+        *,
+        sender:sender_id (
+          full_name,
+          avatar_url
+        )
+      `)
+      .eq('conversation_id', conv.id)
+      .order('created_at', { ascending: true });
+
+    if (msgError) throw msgError;
+
+    // Filter messages based on deletion status
+    const filteredMessages = (allMessages || []).filter(msg => {
+      // If message is deleted for everyone, always show it as tombstone
+      if (msg.deleted_for_everyone) {
         return true;
-      });
+      }
 
-      setMessages(filteredMessages);
-    } catch (err) {
-      console.error('Error loading messages:', err);
-      toast.error('Failed to load conversation');
+      // If message is deleted for me, hide it
+      if (msg.deleted_for_me?.includes(currentUserId)) {
+        return false;
+      }
+
+      return true;
+    });
+
+    setMessages(filteredMessages);
+
+    // ✅ Mark as read if there are unread messages
+    if (conv.unread_count && conv.unread_count > 0) {
+      markConversationAsRead(conv.id);
     }
-  };
-
+  } catch (err) {
+    console.error('Error loading messages:', err);
+    toast.error('Failed to load conversation');
+  }
+};
 
   const handleStartNewConversation = useCallback(async (userId: string) => {
     if (!currentUserId) return;
@@ -881,6 +960,7 @@ export default function MessagesPage() {
         other_user_avatar_url: otherUser.avatar_url || undefined,
         other_user_last_seen: otherUser.last_seen || undefined,
         other_user_is_online: otherUser.is_online || false,
+        unread_count: 0,
       };
 
       setConversations((prev) => {
@@ -1029,19 +1109,17 @@ export default function MessagesPage() {
   };
 
   const fetchConversations = async () => {
-    if (!currentUserId) return;
-
-    try {
-      const { data: convData, error } = await supabase.rpc('get_user_conversations', {
-        user_id: currentUserId,
-      });
-
-      if (error) throw error;
-      setConversations(convData || []);
-    } catch (err) {
-      console.error('Error fetching conversations:', err);
-    }
-  };
+  if (!currentUserId) return;
+  try {
+    const { data: convData, error } = await supabase.rpc('get_user_conversations_with_unread', {
+      p_user_id: currentUserId,
+    });
+    if (error) throw error;
+    setConversations(convData || []);
+  } catch (err) {
+    console.error('Error fetching conversations:', err);
+  }
+};
 
 
   // Mark user as active
@@ -2606,6 +2684,27 @@ export default function MessagesPage() {
                         </div>
                       )}
                     </div>
+                    {/* Add this inside the conversation list item, near the end */}
+{conv.unread_count && conv.unread_count > 0 && (
+  <div style={{
+    position: 'absolute',
+    top: isMobileView ? '10px' : '16px',
+    right: isMobileView ? '16px' : '20px',
+    backgroundColor: '#ef4444',
+    color: 'white',
+    borderRadius: '10px',
+    minWidth: '20px',
+    height: '20px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '12px',
+    fontWeight: 'bold',
+    padding: '0 4px'
+  }}>
+    {conv.unread_count > 9 ? '9+' : conv.unread_count}
+  </div>
+)}
                   </div>
                 ))
               )}
