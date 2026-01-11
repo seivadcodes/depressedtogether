@@ -1,3 +1,4 @@
+// app/api/notify/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
@@ -9,7 +10,6 @@ export async function POST(request: NextRequest) {
     if (body.broadcast && body.type === 'user_presence') {
       console.log(`📤 Broadcasting presence update for user: ${body.userId}`);
       
-      // Forward to signaling server with broadcast flag
       const signalingRes = await fetch('http://178.128.210.229:8084/notify-broadcast', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -35,19 +35,30 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Handle regular notifications to specific users
-    const { toUserId, } = body;
+    // Handle regular notifications - FIX PAYLOAD STRUCTURE HERE
+    const { toUserId, type, conversationId, messageId, content, senderId, timestamp } = body;
     
     if (!toUserId) {
       console.error('❌ Missing toUserId in notification');
       return NextResponse.json({ error: 'Missing toUserId' }, { status: 400 });
     }
 
+    // Standardize payload structure for all clients
+    const standardizedPayload = {
+      type,
+      conversationId,
+      ...(messageId && { messageId }),
+      ...(content && { content }),
+      ...(senderId && { senderId }),
+      ...(timestamp && { timestamp }),
+      toUserId
+    };
+
     // Forward to signaling server
     const signalingRes = await fetch('http://178.128.210.229:8084/notify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify(standardizedPayload),
     });
 
     if (!signalingRes.ok) {
