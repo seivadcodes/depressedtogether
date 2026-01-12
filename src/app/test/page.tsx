@@ -2,10 +2,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase/auth';
+import { createClient } from '@/lib/supabase/client'; // ✅ SAME AS useAuth
 
 type CountryInfo = {
-  country: string; // e.g., "KE"
+  country: string;
 };
 
 export default function TestCountryPage() {
@@ -14,6 +14,9 @@ export default function TestCountryPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
+  // ✅ Create client INSIDE component (or useMemo) — just like useAuth does
+  const supabase = createClient();
 
   useEffect(() => {
     const fetchCountry = async () => {
@@ -29,7 +32,6 @@ export default function TestCountryPage() {
         setLoading(false);
       }
     };
-
     fetchCountry();
   }, []);
 
@@ -40,6 +42,7 @@ export default function TestCountryPage() {
     setSaveStatus('idle');
 
     try {
+      // ✅ Now this will work because supabase client can read session
       const { data: userRes, error: userError } = await supabase.auth.getUser();
       if (userError || !userRes.user) {
         throw new Error('Not authenticated');
@@ -55,11 +58,17 @@ export default function TestCountryPage() {
       if (updateError) throw updateError;
 
       setSaveStatus('success');
-    } catch (err) {
-      console.error('Save failed:', err);
-      setSaveStatus('error');
-      setError('Failed to save country. Are you signed in?');
-    } finally {
+    } catch (err: unknown) {
+  console.error('Save failed:', err);
+  setSaveStatus('error');
+  
+  // Optional: extract message if available
+  let message = 'Failed to save country. Are you signed in?';
+  if (err instanceof Error) {
+    message = err.message;
+  }
+  setError(message);
+}finally {
       setSaving(false);
     }
   };
@@ -79,7 +88,6 @@ export default function TestCountryPage() {
         </p>
       )}
 
-      {/* ✅ Button always shown */}
       <button
         onClick={saveToProfile}
         disabled={saving}
