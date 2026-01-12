@@ -122,6 +122,7 @@ export default function MessagesPage() {
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
 
   const [otherUserLastSeen, setOtherUserLastSeen] = useState<string | null>(null);
+  const typingDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
   const [otherUserPresenceLoaded, setOtherUserPresenceLoaded] = useState(false);
 
@@ -640,33 +641,40 @@ window.dispatchEvent(new CustomEvent('unreadUpdate', { detail: totalUnread }));
 
   // Handle when user starts typing
   const handleUserTyping = useCallback(() => {
-    if (!selectedConversation || !currentUserId) return;
-
-    // Send typing notification even with empty messages
+  if (!selectedConversation || !currentUserId) return;
+  
+  // Clear previous debounce timer
+  if (typingDebounceRef.current) {
+    clearTimeout(typingDebounceRef.current);
+  }
+  
+  // Only send typing notification after a brief pause in typing (300ms)
+  typingDebounceRef.current = setTimeout(() => {
     sendNotification({
       type: 'user_typing',
       toUserId: selectedConversation.other_user_id,
       conversationId: selectedConversation.id,
       isTyping: true,
-      userId: currentUserId // 👈 Add this missing field
+      userId: currentUserId
     });
-
-    // Clear existing timeout
+    
+    // Clear existing timeout for "stopped typing"
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
     }
-
-    // After 2.5 seconds of no typing, send stopped typing notification
+    
+    // Set timeout to send "stopped typing" after inactivity
     typingTimeoutRef.current = setTimeout(() => {
       sendNotification({
         type: 'user_typing',
         toUserId: selectedConversation.other_user_id,
         conversationId: selectedConversation.id,
         isTyping: false,
-        userId: currentUserId // 👈 Add this missing field
+        userId: currentUserId
       });
     }, 2500);
-  }, [currentUserId, selectedConversation]);
+  }, 300); // Wait 300ms after last keystroke before sending notification
+}, [currentUserId, selectedConversation]);
 
   // Clear typing timeout when component unmounts
   useEffect(() => {
@@ -1667,7 +1675,9 @@ useEffect(() => {
                           fontStyle: isDeleted ? 'italic' : 'normal',
                           cursor: isDeleted ? 'default' : (isOwn ? 'default' : 'pointer'),
                           userSelect: 'none',
-                          WebkitUserSelect: 'none'
+                          WebkitUserSelect: 'none',
+                          overflowWrap: 'break-word'
+                          
                         }}
                       >
                         {/* Message Menu Button - Only show for non-tombstone, non-deleted-for-me messages */}
@@ -2957,6 +2967,7 @@ useEffect(() => {
                                     cursor: isDeleted ? 'default' : (isOwn ? 'default' : 'pointer'),
                                     userSelect: 'none',
                                     WebkitUserSelect: 'none',
+                                    overflowWrap: 'break-word'
 
                                   }}
                                 >
