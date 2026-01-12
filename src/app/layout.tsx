@@ -1,4 +1,5 @@
-// src/app/layout.tsx
+// Inside src/app/layout.tsx
+
 'use client';
 
 import { Inter } from 'next/font/google';
@@ -7,16 +8,30 @@ import Header from '@/components/layout/header';
 import FooterNav from '@/components/layout/FooterNav';
 import { SupabaseProvider } from '@/components/SupabaseProvider';
 import { useAuth } from '@/hooks/useAuth';
-import { ReactNode, Suspense } from 'react';
+import { ReactNode, Suspense, useEffect } from 'react'; // 👈 added useEffect
 import { Toaster } from 'react-hot-toast';
 import { CallProvider } from '@/context/CallContext';
 import CallOverlay from '@/components/calling/CallOverlay';
 
 const inter = Inter({ subsets: ['latin'] });
 
-// ✅ Remove "export" — keep it local to this file
 function LayoutContent({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
+
+  // ✅ Auto-update country when user is known
+  useEffect(() => {
+    if (user?.id && typeof user.id === 'string' && user.id.trim() !== '') {
+      // Fire-and-forget POST to update country
+      fetch('/api/update-user-country', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: user.id }),
+        credentials: 'include', // ensures session cookie is sent
+      }).catch(err => {
+        console.warn('Failed to auto-update country:', err);
+      });
+    }
+  }, [user?.id]); // runs once per login/session
 
   if (loading) {
     return (

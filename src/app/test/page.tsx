@@ -2,15 +2,18 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase/auth';
 
 type CountryInfo = {
-  country: string; // e.g., "KE", "US", "GB"
+  country: string;
 };
 
 export default function TestCountryPage() {
   const [country, setCountry] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
   useEffect(() => {
     const fetchCountry = async () => {
@@ -30,6 +33,39 @@ export default function TestCountryPage() {
     fetchCountry();
   }, []);
 
+  const saveToProfile = async () => {
+    if (!country) return;
+
+    setSaving(true);
+    setSaveStatus('idle');
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      setSaveStatus('error');
+      setSaving(false);
+      setError('You must be signed in to save your country.');
+      return;
+    }
+
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ country })
+      .eq('id', user.id);
+
+    if (updateError) {
+      console.error('Supabase update error:', updateError);
+      setSaveStatus('error');
+    } else {
+      setSaveStatus('success');
+    }
+
+    setSaving(false);
+  };
+
   if (loading) {
     return <div style={{ padding: '2rem' }}>Detecting your country...</div>;
   }
@@ -44,8 +80,38 @@ export default function TestCountryPage() {
           Your country code: <strong>{country || 'Unknown'}</strong>
         </p>
       )}
-      <p style={{ fontSize: '0.9rem', color: '#666' }}>
-        (Deployed on Vercel? )
+
+      {country && country !== 'XX' && (
+        <button
+          onClick={saveToProfile}
+          disabled={saving}
+          style={{
+            marginTop: '1rem',
+            padding: '0.5rem 1rem',
+            backgroundColor: '#3b82f6',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: saving ? 'not-allowed' : 'pointer',
+          }}
+        >
+          {saving ? 'Saving...' : 'Save to Profile'}
+        </button>
+      )}
+
+      {saveStatus === 'success' && (
+        <p style={{ color: 'green', marginTop: '0.5rem' }}>
+          ✅ Country saved to your profile!
+        </p>
+      )}
+      {saveStatus === 'error' && (
+        <p style={{ color: 'red', marginTop: '0.5rem' }}>
+          ❌ Failed to save country. Please try again.
+        </p>
+      )}
+
+      <p style={{ fontSize: '0.9rem', color: '#666', marginTop: '2rem' }}>
+        (Deployed on Vercel?)
       </p>
     </div>
   );
