@@ -61,73 +61,65 @@ export default function Header() {
     fetchProfile();
   }, [user, supabase]);
 
-  // 🔔 Fetch unread messages count
-  const fetchUnreadCount = useCallback(async () => {
-    if (!user?.id) {
-      setUnreadMessages(0);
-      setIsUnreadLoading(false);
-      return;
-    }
-    setIsUnreadLoading(true);
-    try {
-      const { data, error } = await supabase.rpc('get_user_conversations_with_unread', {
-        p_user_id: user.id,
-      });
-      if (error) throw error;
-      const conversations = (data as ConversationItem[]) || [];
-      if (!Array.isArray(conversations)) {
-        console.warn('Unexpected response format');
-        setUnreadMessages(0);
-        return;
-      }
-      const totalUnread = conversations.reduce((sum, conv) => sum + (conv.unread_count || 0), 0);
+  const fetchAllUnreadCounts = useCallback(async () => {
+  if (!user?.id) {
+    setUnreadMessages(0);
+    setUnreadNotifications(0);
+    setIsUnreadLoading(false);
+    return;
+  }
+
+  setIsUnreadLoading(true);
+  try {
+    // Fetch unread messages
+    const { data: convData, error: convError } = await supabase.rpc('get_user_conversations_with_unread', {
+      p_user_id: user.id,
+    });
+    if (!convError && Array.isArray(convData)) {
+      const totalUnread = convData.reduce((sum, conv) => sum + (conv.unread_count || 0), 0);
       setUnreadMessages(totalUnread);
-    } catch (err) {
-      console.error('Error fetching unread messages:', err);
+    } else {
       setUnreadMessages(0);
-    } finally {
-      setIsUnreadLoading(false);
     }
-  }, [user?.id, supabase]);
 
-  // 🔔 Fetch unread notifications count — MUST BE DECLARED BEFORE USE
-  const fetchUnreadNotifications = useCallback(async () => {
-    if (!user?.id) {
-      setUnreadNotifications(0);
-      return;
-    }
-    try {
-      const { count, error } = await supabase
-        .from('notifications')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('read', false);
-
-      if (error) throw error;
+    // Fetch unread notifications
+    const { count, error: notifError } = await supabase
+      .from('notifications')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('read', false);
+    if (!notifError) {
       setUnreadNotifications(count || 0);
-    } catch (err) {
-      console.error('Error fetching unread notifications:', err);
+    } else {
       setUnreadNotifications(0);
     }
-  }, [user?.id, supabase]);
+  } catch (err) {
+    console.error('Error fetching all unread counts:', err);
+    setUnreadMessages(0);
+    setUnreadNotifications(0);
+  } finally {
+    setIsUnreadLoading(false);
+  }
+}, [user?.id, supabase]);
 
-  // Initial fetch + refetch on focus
-  useEffect(() => {
-    fetchUnreadCount();
-    fetchUnreadNotifications(); // ✅ Safe now
-    const handleFocus = () => {
-      if (document.visibilityState === 'visible') {
-        fetchUnreadCount();
-        fetchUnreadNotifications();
-      }
-    };
-    window.addEventListener('focus', handleFocus);
-    document.addEventListener('visibilitychange', handleFocus);
-    return () => {
-      window.removeEventListener('focus', handleFocus);
-      document.removeEventListener('visibilitychange', handleFocus);
-    };
-  }, [fetchUnreadCount, fetchUnreadNotifications]);
+  // Unified initial fetch + refetch on focus/visibility
+useEffect(() => {
+  fetchAllUnreadCounts();
+  
+  const handleVisibilityChange = () => {
+    if (document.visibilityState === 'visible') {
+      fetchAllUnreadCounts();
+    }
+  };
+
+  window.addEventListener('focus', fetchAllUnreadCounts);
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+
+  return () => {
+    window.removeEventListener('focus', fetchAllUnreadCounts);
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+  };
+}, [fetchAllUnreadCounts]);
 
   // WebSocket setup
   useEffect(() => {
@@ -140,15 +132,15 @@ export default function Header() {
     socket.onopen = () => {
       console.log('HeaderCode WebSocket connected');
       setWsConnected(true);
-      fetchUnreadCount();
+      fetchAllUnreadCounts();
     };
 
     socket.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data.toString());
-        if (data.type === 'new_message') {
-          fetchUnreadCount();
-        }
+       if (data.type === 'new_message') {
+  fetchAllUnreadCounts();
+}
         if (data.type === 'call_invitation') {
           setIncomingCall({
             caller_id: data.caller_id,
@@ -173,7 +165,7 @@ export default function Header() {
 
     wsRef.current = socket;
     return () => socket.close();
-  }, [user?.id, fetchUnreadCount]);
+  }, [user?.id, fetchAllUnreadCounts]);
 
   // Close menu on outside click
   useEffect(() => {
@@ -186,20 +178,30 @@ export default function Header() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Unread update listener
-  useEffect(() => {
-    if (!user?.id) return;
-    const handleUnreadUpdate = (event: Event) => {
-      const customEvent = event as CustomEvent;
-      const newCount = customEvent.detail;
-      if (typeof newCount === 'number' && newCount !== unreadMessages) {
-        setUnreadMessages(newCount);
-      }
-    };
-    window.addEventListener('unreadUpdate', handleUnreadUpdate);
-    fetchUnreadCount();
-    return () => window.removeEventListener('unreadUpdate', handleUnreadUpdate);
-  }, [user?.id, fetchUnreadCount, unreadMessages]);
+// Listen for global unread refresh requests
+useEffect(() => {
+  const handleUnreadRefresh = () => {
+    if (user?.id) {
+      fetchAllUnreadCounts();
+    }
+  };
+  const handleUnreadUpdate = (event: Event) => {
+    const customEvent = event as CustomEvent;
+    const newCount = customEvent.detail;
+    if (typeof newCount === 'number') {
+      setUnreadMessages(newCount);
+    }
+  };
+
+  window.addEventListener('unreadUpdateRequest', handleUnreadRefresh);
+  window.addEventListener('unreadUpdate', handleUnreadUpdate);
+
+  return () => {
+    window.removeEventListener('unreadUpdateRequest', handleUnreadRefresh);
+    window.removeEventListener('unreadUpdate', handleUnreadUpdate);
+  };
+}, [user?.id, fetchAllUnreadCounts]);
+
 
   const initials = useMemo(() => {
     if (!user) return 'U';

@@ -6,18 +6,16 @@ import './globals.css';
 import Header from '@/components/layout/header';
 import FooterNav from '@/components/layout/FooterNav';
 import { SupabaseProvider } from '@/components/SupabaseProvider';
-
 import { useAuth } from '@/hooks/useAuth';
 import { ReactNode, Suspense } from 'react';
 import { Toaster } from 'react-hot-toast';
-
-// ✅ Call system
 import { CallProvider } from '@/context/CallContext';
 import CallOverlay from '@/components/calling/CallOverlay';
 
 const inter = Inter({ subsets: ['latin'] });
 
-export function LayoutContent({ children }: { children: ReactNode }) {
+// ✅ Remove "export" — keep it local to this file
+function LayoutContent({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
 
   if (loading) {
@@ -28,7 +26,6 @@ export function LayoutContent({ children }: { children: ReactNode }) {
     );
   }
 
-  // Don't render CallProvider if not logged in
   if (!user) {
     return (
       <>
@@ -39,7 +36,6 @@ export function LayoutContent({ children }: { children: ReactNode }) {
     );
   }
 
-  // Validate user.id before passing to CallProvider
   if (!user.id || typeof user.id !== 'string' || user.id.trim() === '') {
     console.error('Layout: Invalid user.id — skipping CallProvider', user.id);
     return (
@@ -51,13 +47,10 @@ export function LayoutContent({ children }: { children: ReactNode }) {
     );
   }
 
-  // ✅ Only render CallProvider when we have a valid user
   return (
     <CallProvider userId={user.id} fullName={user.user_metadata?.full_name || 'Anonymous'}>
       <Toaster />
       <CallOverlay />
-      {/* Optional: keep SignalingProvider only if it does non-call work */}
-      {/* <SignalingProvider currentUserId={user.id} /> */}
       <Header />
       <main className="flex-grow pb-16 md:pb-0 pt-16 md:pt-16">{children}</main>
       <FooterNav />
