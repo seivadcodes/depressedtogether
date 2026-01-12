@@ -736,20 +736,22 @@ useEffect(() => {
 
       if (!response.ok) {
         // Safely extract error info even if response isn't JSON
-        let errorData;
-        const text = await response.text();
-        try {
-          errorData = JSON.parse(text);
-        } catch {
-          errorData = { error: 'Non-JSON server response', details: text.trim().substring(0, 200) };
-        }
-        return false;
+     let errorData;
+const text = await response.text();
+try {
+  errorData = JSON.parse(text);
+} catch {
+  errorData = { error: 'Non-JSON server response', details: text.trim().substring(0, 200) };
+}
+console.warn('Notification API error:', errorData); // 👈 Add this
+return false;
       }
 
       return true;
     } catch (error) {
-      return false;
-    }
+  console.error('Failed to send notification:', error);
+  return false;
+}
   };
 
 

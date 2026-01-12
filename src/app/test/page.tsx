@@ -1,11 +1,11 @@
-// src/app/test-country/page.tsx
+// src/app/test/page.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/auth';
 
 type CountryInfo = {
-  country: string;
+  country: string; // e.g., "KE"
 };
 
 export default function TestCountryPage() {
@@ -34,36 +34,34 @@ export default function TestCountryPage() {
   }, []);
 
   const saveToProfile = async () => {
-    if (!country) return;
+    if (!country || country === 'XX') return;
 
     setSaving(true);
     setSaveStatus('idle');
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    try {
+      const { data: userRes, error: userError } = await supabase.auth.getUser();
+      if (userError || !userRes.user) {
+        throw new Error('Not authenticated');
+      }
 
-    if (authError || !user) {
-      setSaveStatus('error');
-      setSaving(false);
-      setError('You must be signed in to save your country.');
-      return;
-    }
+      const userId = userRes.user.id;
 
-    const { error: updateError } = await supabase
-      .from('profiles')
-      .update({ country })
-      .eq('id', user.id);
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ country })
+        .eq('id', userId);
 
-    if (updateError) {
-      console.error('Supabase update error:', updateError);
-      setSaveStatus('error');
-    } else {
+      if (updateError) throw updateError;
+
       setSaveStatus('success');
+    } catch (err) {
+      console.error('Save failed:', err);
+      setSaveStatus('error');
+      setError('Failed to save country. Are you signed in?');
+    } finally {
+      setSaving(false);
     }
-
-    setSaving(false);
   };
 
   if (loading) {
@@ -81,23 +79,22 @@ export default function TestCountryPage() {
         </p>
       )}
 
-      {country && country !== 'XX' && (
-        <button
-          onClick={saveToProfile}
-          disabled={saving}
-          style={{
-            marginTop: '1rem',
-            padding: '0.5rem 1rem',
-            backgroundColor: '#3b82f6',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: saving ? 'not-allowed' : 'pointer',
-          }}
-        >
-          {saving ? 'Saving...' : 'Save to Profile'}
-        </button>
-      )}
+      {/* ✅ Button always shown */}
+      <button
+        onClick={saveToProfile}
+        disabled={saving}
+        style={{
+          marginTop: '1rem',
+          padding: '0.5rem 1rem',
+          backgroundColor: '#3b82f6',
+          color: 'white',
+          border: 'none',
+          borderRadius: '4px',
+          cursor: saving ? 'not-allowed' : 'pointer',
+        }}
+      >
+        {saving ? 'Saving...' : 'Save to Profile'}
+      </button>
 
       {saveStatus === 'success' && (
         <p style={{ color: 'green', marginTop: '0.5rem' }}>
@@ -106,7 +103,7 @@ export default function TestCountryPage() {
       )}
       {saveStatus === 'error' && (
         <p style={{ color: 'red', marginTop: '0.5rem' }}>
-          ❌ Failed to save country. Please try again.
+          ❌ Failed to save country.
         </p>
       )}
 
