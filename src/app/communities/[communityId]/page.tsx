@@ -1,11 +1,12 @@
 // src/app/communities/[communityId]/page.tsx
 'use client';
-import { useState, useEffect, ChangeEvent, FormEvent, useCallback } from 'react';
+import { useState, useEffect, ChangeEvent, FormEvent, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { ShareCommunityButton } from '@/components/ShareCommunityButton';
 import Head from 'next/head';
+import Link from 'next/link';
 
 import {
   Users,
@@ -160,8 +161,8 @@ const baseColors = {
   status: { online: '#16a34a', offline: '#cbd5e1' },
 };
 
-const spacing = { sm: '0.5rem', md: '0.75rem', lg: '1rem', xl: '1.25rem', '2xl': '1.5rem' };
-const borderRadius = { md: '0.5rem', lg: '0.75rem', xl: '1rem', full: '9999px' };
+const spacing = { xs: '0.25rem', sm: '0.5rem', md: '0.75rem', lg: '1rem', xl: '1.25rem', '2xl': '1.5rem' };
+const borderRadius = { sm: '0.25rem', md: '0.5rem', lg: '0.75rem', xl: '1rem', full: '9999px' };
 
 const griefGradients: Record<string, string> = {
   parent: 'linear-gradient(135deg, #fcd34d, #f97316)',
@@ -282,84 +283,102 @@ export default function CommunityDetailPage() {
   const [addingReply, setAddingReply] = useState<Record<string, boolean>>({});
   const [deletingReplyId, setDeletingReplyId] = useState<string | null>(null);
   const [showAllComments, setShowAllComments] = useState<Record<string, boolean>>({});
-
+const [isKebabOpen, setIsKebabOpen] = useState(false);
+const kebabMenuRef = useRef<HTMLDivElement>(null);
   const formatRecentActivity = (dateString: string): string => {
     const now = new Date();
     const created = new Date(dateString);
     const diffMs = now.getTime() - created.getTime();
     const seconds = Math.floor(diffMs / 1000);
     if (seconds < 60) return 'Just now';
-    
+
     const minutes = Math.floor(seconds / 60);
     if (minutes < 60) {
       return minutes === 1 ? '1 minute ago' : `${minutes} minutes ago`;
     }
-    
+
     const hours = Math.floor(minutes / 60);
     if (hours < 24) {
       return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
     }
-    
+
     const days = Math.floor(hours / 24);
     if (days < 7) {
       return days === 1 ? '1 day ago' : `${days} days ago`;
     }
-    
+
     const weeks = Math.floor(days / 7);
     if (weeks < 4) {
       return weeks === 1 ? '1 week ago' : `${weeks} weeks ago`;
     }
-    
+
     const months = Math.floor(days / 30);
     if (months < 12) {
       return months === 1 ? '1 month ago' : `${months} months ago`;
     }
-    
+
     const years = Math.floor(days / 365);
     return years === 1 ? '1 year ago' : `${years} years ago`;
   };
-const isUserOnline = useCallback((lastOnline: string | null): boolean => {
-  if (!lastOnline) return false;
-  const lastOnlineDate = new Date(lastOnline);
-  const now = new Date();
-  return now.getTime() - lastOnlineDate.getTime() < 5 * 60 * 1000;
-}, []); // 👈 empty dependency array — it never changes
+  const isUserOnline = useCallback((lastOnline: string | null): boolean => {
+    if (!lastOnline) return false;
+    const lastOnlineDate = new Date(lastOnline);
+    const now = new Date();
+    return now.getTime() - lastOnlineDate.getTime() < 5 * 60 * 1000;
+  }, []); // 👈 empty dependency array — it never changes
 
- useEffect(() => {
-  const fetchData = async () => {
-    if (!communityId) return;
+  // Close kebab menu when clicking outside
+useEffect(() => {
+  const handleClickOutside = (event: MouseEvent) => {
+    if (kebabMenuRef.current && !kebabMenuRef.current.contains(event.target as Node)) {
+      setIsKebabOpen(false);
+    }
+  };
 
-    try {
-      setLoading(true);
-      setError(null);
+  if (isKebabOpen) {
+    document.addEventListener('mousedown', handleClickOutside);
+  }
 
-      // 1. Fetch community data
-      const { data: communityData, error: communityError } = await supabase
-        .from('communities')
-        .select('*')
-        .eq('id', communityId)
-        .single();
+  return () => {
+    document.removeEventListener('mousedown', handleClickOutside);
+  };
+}, [isKebabOpen]);
 
-      if (communityError) throw new Error(`Failed to fetch community: ${communityError.message}`);
-      if (!communityData) throw new Error('Community not found');
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!communityId) return;
 
-      let coverPhotoUrl = communityData.cover_photo_url;
-      if (!coverPhotoUrl) {
-        coverPhotoUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/communities/${communityId}/banner.jpg?t=${Date.now()}`;
-      }
+      try {
+        setLoading(true);
+        setError(null);
 
-      // 2. Count total members
-      const { count, error: countError } = await supabase
-        .from('community_members')
-        .select('*', { count: 'exact', head: true })
-        .eq('community_id', communityId);
+        // 1. Fetch community data
+        const { data: communityData, error: communityError } = await supabase
+          .from('communities')
+          .select('*')
+          .eq('id', communityId)
+          .single();
 
-      if (countError) throw new Error(`Failed to count members: ${countError.message}`);
+        if (communityError) throw new Error(`Failed to fetch community: ${communityError.message}`);
+        if (!communityData) throw new Error('Community not found');
 
-      // 3. ✅ FETCH MEMBERS HERE — BEFORE onlineCount
-      const { data: membersData, error: membersError } = await supabase
-        .from('community_members')
-        .select(`
+        let coverPhotoUrl = communityData.cover_photo_url;
+        if (!coverPhotoUrl) {
+          coverPhotoUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/communities/${communityId}/banner.jpg?t=${Date.now()}`;
+        }
+
+        // 2. Count total members
+        const { count, error: countError } = await supabase
+          .from('community_members')
+          .select('*', { count: 'exact', head: true })
+          .eq('community_id', communityId);
+
+        if (countError) throw new Error(`Failed to count members: ${countError.message}`);
+
+        // 3. ✅ FETCH MEMBERS HERE — BEFORE onlineCount
+        const { data: membersData, error: membersError } = await supabase
+          .from('community_members')
+          .select(`
           role,
           joined_at,
           user_id,
@@ -371,32 +390,214 @@ const isUserOnline = useCallback((lastOnline: string | null): boolean => {
             is_anonymous
           )
         `)
-        .eq('community_id', communityId)
-        .order('joined_at', { ascending: true });
+          .eq('community_id', communityId)
+          .order('joined_at', { ascending: true });
 
-      if (membersError) throw membersError;
+        if (membersError) throw membersError;
 
-      // 4. ✅ NOW calculate onlineCount — membersData is available
-      const onlineCount = membersData.filter((member: CommunityMemberWithProfile) => {
-        const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
-        return isUserOnline(profile?.last_online || null);
-      }).length;
+        // 4. ✅ NOW calculate onlineCount — membersData is available
+        const onlineCount = membersData.filter((member: CommunityMemberWithProfile) => {
+          const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
+          return isUserOnline(profile?.last_online || null);
+        }).length;
 
-      // 5. Build community object with correct counts
-      const communityWithPhoto = {
-        ...communityData,
-        cover_photo_url: coverPhotoUrl,
-        member_count: count || 0,
-        online_count: onlineCount, // ✅ now safe and accurate
-      };
+        // 5. Build community object with correct counts
+        const communityWithPhoto = {
+          ...communityData,
+          cover_photo_url: coverPhotoUrl,
+          member_count: count || 0,
+          online_count: onlineCount, // ✅ now safe and accurate
+        };
 
-      setCommunity(communityWithPhoto);
+        setCommunity(communityWithPhoto);
 
-      // 6. Format and set members
-      const formattedMembers = membersData.map((member: CommunityMemberWithProfile) => {
+        // 6. Format and set members
+        const formattedMembers = membersData.map((member: CommunityMemberWithProfile) => {
+          const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
+          const isAnonymous = profile?.is_anonymous || false;
+
+          return {
+            user_id: member.user_id,
+            username: isAnonymous ? 'Anonymous' : profile?.full_name || 'Anonymous',
+            avatar_url: isAnonymous ? null : profile?.avatar_url || null,
+            last_online: profile?.last_online || null,
+            is_online: isUserOnline(profile?.last_online || null),
+            role: member.role,
+            joined_at: member.joined_at,
+          };
+        });
+
+        setMembers(formattedMembers);
+
+        // 7. Check if current user is a member
+        if (user) {
+          const { data: memberData } = await supabase
+            .from('community_members')
+            .select('role')
+            .eq('community_id', communityId)
+            .eq('user_id', user.id)
+            .single();
+
+          if (memberData) {
+            setIsMember(true);
+            setUserRole(memberData.role);
+          } else {
+            setIsMember(false);
+            setUserRole(null);
+          }
+        } else {
+          setIsMember(false);
+          setUserRole(null);
+        }
+
+        // 8. Fetch posts
+        const { data: postData, error: postError } = await supabase
+          .from('community_posts')
+          .select(`
+          id,
+          content,
+          created_at,
+          community_id,
+          media_url,
+          likes_count,
+          comments_count,
+          user_id
+        `)
+          .eq('community_id', communityId)
+          .order('created_at', { ascending: false });
+
+        if (postError) throw postError;
+
+        const userIds = [...new Set(postData.map((post: CommunityPost) => post.user_id))];
+        const { data: profilesData, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, full_name, avatar_url, is_anonymous')
+          .in('id', userIds);
+
+        if (profilesError) console.warn('Error fetching profiles for posts:', profilesError);
+
+        const profilesMap = new Map();
+        profilesData?.forEach((profile: Profile) => {
+          profilesMap.set(profile.id, profile);
+        });
+
+        let postsWithLikes = postData.map((post: CommunityPost) => {
+          const userProfile = profilesMap.get(post.user_id) || {};
+          const isAnonymous = userProfile.is_anonymous || false;
+
+          return {
+            id: post.id,
+            content: post.content,
+            media_url: post.media_url,
+            created_at: post.created_at,
+            user_id: post.user_id,
+            username: isAnonymous ? 'Anonymous' : userProfile.full_name || 'Anonymous',
+            avatar_url: isAnonymous ? null : userProfile.avatar_url || null,
+            community_id: post.community_id,
+            likes_count: post.likes_count || 0,
+            comments_count: post.comments_count || 0,
+            is_liked: false,
+          };
+        });
+
+        // 9. Fetch like status if user is logged in
+        if (user) {
+          const likeStatusPromises = postsWithLikes.map(async (post) => {
+            try {
+              const isLiked = await Hearts.checkIfLiked(post.id, user.id, 'community_posts');
+              return { postId: post.id, isLiked };
+            } catch (error) {
+              console.error('Error checking like status:', error);
+              return { postId: post.id, isLiked: false };
+            }
+          });
+
+          const likeStatusResults = await Promise.all(likeStatusPromises);
+          postsWithLikes = postsWithLikes.map((post) => {
+            const likeStatus = likeStatusResults.find((status) => status.postId === post.id);
+            return likeStatus ? { ...post, is_liked: likeStatus.isLiked } : post;
+          });
+        }
+
+        setPosts(postsWithLikes);
+
+        // 10. Fetch latest comment for each post
+        if (postData.length > 0) {
+          const fetchLatestCommentsPromises = postData.map(async (post: CommunityPost) => {
+            const { data: latestComments, error: commentsError } = await supabase
+              .from('community_post_comments_with_profiles')
+              .select('*')
+              .eq('post_id', post.id)
+              .order('created_at', { ascending: false })
+              .limit(1);
+
+            if (commentsError) {
+              console.error(`Error fetching latest comment for post ${post.id}:`, commentsError);
+              return { postId: post.id, comments: [] };
+            }
+
+            if (latestComments && latestComments.length > 0) {
+              const formattedComment = {
+                id: latestComments[0].id,
+                content: latestComments[0].content,
+                created_at: latestComments[0].created_at,
+                user_id: latestComments[0].user_id,
+                username: latestComments[0].is_anonymous ? 'Anonymous' : latestComments[0].username || 'Anonymous',
+                avatar_url: latestComments[0].is_anonymous ? null : latestComments[0].avatar_url || null,
+                post_id: latestComments[0].post_id,
+                parent_comment_id: latestComments[0].parent_comment_id ?? null,
+                replies: [],
+                reply_count: 0,
+              };
+
+              return { postId: post.id, comments: [formattedComment] };
+            }
+
+            return { postId: post.id, comments: [] };
+          });
+
+          const latestCommentsResults = await Promise.all(fetchLatestCommentsPromises);
+
+          const initialComments: Record<string, CommentNode[]> = {};
+          latestCommentsResults.forEach(({ postId, comments }) => {
+            initialComments[postId] = comments as CommentNode[];
+          });
+          setComments(initialComments);
+        }
+      } catch (err) {
+        console.error('Error fetching community:', err);
+        const message = err instanceof Error ? err.message : 'Failed to load community data';
+        setError(message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [communityId, user, supabase, isUserOnline]); // ✅ include isUserOnline in deps
+
+  useEffect(() => {
+    if (!communityId) return;
+
+    const fetchMembersAndOnlineCount = async () => {
+      const { data: membersData, error } = await supabase
+        .from('community_members')
+        .select(`
+        role,
+        joined_at,
+        user_id,
+        user:profiles!left (id, full_name, avatar_url, last_online, is_anonymous)
+      `)
+        .eq('community_id', communityId);
+
+      if (error) {
+        console.error('Failed to refresh members:', error);
+        return;
+      }
+
+      const formattedMembers = membersData.map((member) => {
         const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
         const isAnonymous = profile?.is_anonymous || false;
-
         return {
           user_id: member.user_id,
           username: isAnonymous ? 'Anonymous' : profile?.full_name || 'Anonymous',
@@ -410,211 +611,29 @@ const isUserOnline = useCallback((lastOnline: string | null): boolean => {
 
       setMembers(formattedMembers);
 
-      // 7. Check if current user is a member
-      if (user) {
-        const { data: memberData } = await supabase
-          .from('community_members')
-          .select('role')
-          .eq('community_id', communityId)
-          .eq('user_id', user.id)
-          .single();
+      const newOnlineCount = formattedMembers.filter(m => m.is_online).length;
+      setCommunity(prev => prev ? { ...prev, online_count: newOnlineCount } : null);
+    };
 
-        if (memberData) {
-          setIsMember(true);
-          setUserRole(memberData.role);
-        } else {
-          setIsMember(false);
-          setUserRole(null);
-        }
-      } else {
-        setIsMember(false);
-        setUserRole(null);
-      }
+    fetchMembersAndOnlineCount();
+    const interval = setInterval(fetchMembersAndOnlineCount, 30_000);
+    return () => clearInterval(interval);
+  }, [communityId, supabase, isUserOnline]);
 
-      // 8. Fetch posts
-      const { data: postData, error: postError } = await supabase
-        .from('community_posts')
-        .select(`
-          id,
-          content,
-          created_at,
-          community_id,
-          media_url,
-          likes_count,
-          comments_count,
-          user_id
-        `)
-        .eq('community_id', communityId)
-        .order('created_at', { ascending: false });
+  useEffect(() => {
+    if (!user) return;
 
-      if (postError) throw postError;
-
-      const userIds = [...new Set(postData.map((post: CommunityPost) => post.user_id))];
-      const { data: profilesData, error: profilesError } = await supabase
+    const updateLastOnline = async () => {
+      await supabase
         .from('profiles')
-        .select('id, full_name, avatar_url, is_anonymous')
-        .in('id', userIds);
+        .update({ last_online: new Date().toISOString() })
+        .eq('id', user.id);
+    };
 
-      if (profilesError) console.warn('Error fetching profiles for posts:', profilesError);
-
-      const profilesMap = new Map();
-      profilesData?.forEach((profile: Profile) => {
-        profilesMap.set(profile.id, profile);
-      });
-
-      let postsWithLikes = postData.map((post: CommunityPost) => {
-        const userProfile = profilesMap.get(post.user_id) || {};
-        const isAnonymous = userProfile.is_anonymous || false;
-
-        return {
-          id: post.id,
-          content: post.content,
-          media_url: post.media_url,
-          created_at: post.created_at,
-          user_id: post.user_id,
-          username: isAnonymous ? 'Anonymous' : userProfile.full_name || 'Anonymous',
-          avatar_url: isAnonymous ? null : userProfile.avatar_url || null,
-          community_id: post.community_id,
-          likes_count: post.likes_count || 0,
-          comments_count: post.comments_count || 0,
-          is_liked: false,
-        };
-      });
-
-      // 9. Fetch like status if user is logged in
-      if (user) {
-        const likeStatusPromises = postsWithLikes.map(async (post) => {
-          try {
-            const isLiked = await Hearts.checkIfLiked(post.id, user.id, 'community_posts');
-            return { postId: post.id, isLiked };
-          } catch (error) {
-            console.error('Error checking like status:', error);
-            return { postId: post.id, isLiked: false };
-          }
-        });
-
-        const likeStatusResults = await Promise.all(likeStatusPromises);
-        postsWithLikes = postsWithLikes.map((post) => {
-          const likeStatus = likeStatusResults.find((status) => status.postId === post.id);
-          return likeStatus ? { ...post, is_liked: likeStatus.isLiked } : post;
-        });
-      }
-
-      setPosts(postsWithLikes);
-
-      // 10. Fetch latest comment for each post
-      if (postData.length > 0) {
-        const fetchLatestCommentsPromises = postData.map(async (post: CommunityPost) => {
-          const { data: latestComments, error: commentsError } = await supabase
-            .from('community_post_comments_with_profiles')
-            .select('*')
-            .eq('post_id', post.id)
-            .order('created_at', { ascending: false })
-            .limit(1);
-
-          if (commentsError) {
-            console.error(`Error fetching latest comment for post ${post.id}:`, commentsError);
-            return { postId: post.id, comments: [] };
-          }
-
-          if (latestComments && latestComments.length > 0) {
-            const formattedComment = {
-              id: latestComments[0].id,
-              content: latestComments[0].content,
-              created_at: latestComments[0].created_at,
-              user_id: latestComments[0].user_id,
-              username: latestComments[0].is_anonymous ? 'Anonymous' : latestComments[0].username || 'Anonymous',
-              avatar_url: latestComments[0].is_anonymous ? null : latestComments[0].avatar_url || null,
-              post_id: latestComments[0].post_id,
-              parent_comment_id: latestComments[0].parent_comment_id ?? null,
-              replies: [],
-              reply_count: 0,
-            };
-
-            return { postId: post.id, comments: [formattedComment] };
-          }
-
-          return { postId: post.id, comments: [] };
-        });
-
-        const latestCommentsResults = await Promise.all(fetchLatestCommentsPromises);
-
-        const initialComments: Record<string, CommentNode[]> = {};
-        latestCommentsResults.forEach(({ postId, comments }) => {
-          initialComments[postId] = comments as CommentNode[];
-        });
-        setComments(initialComments);
-      }
-    } catch (err) {
-      console.error('Error fetching community:', err);
-      const message = err instanceof Error ? err.message : 'Failed to load community data';
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  fetchData();
-}, [communityId, user, supabase, isUserOnline]); // ✅ include isUserOnline in deps
-
-useEffect(() => {
-  if (!communityId) return;
-
-  const fetchMembersAndOnlineCount = async () => {
-    const { data: membersData, error } = await supabase
-      .from('community_members')
-      .select(`
-        role,
-        joined_at,
-        user_id,
-        user:profiles!left (id, full_name, avatar_url, last_online, is_anonymous)
-      `)
-      .eq('community_id', communityId);
-
-    if (error) {
-      console.error('Failed to refresh members:', error);
-      return;
-    }
-
-    const formattedMembers = membersData.map((member) => {
-      const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
-      const isAnonymous = profile?.is_anonymous || false;
-      return {
-        user_id: member.user_id,
-        username: isAnonymous ? 'Anonymous' : profile?.full_name || 'Anonymous',
-        avatar_url: isAnonymous ? null : profile?.avatar_url || null,
-        last_online: profile?.last_online || null,
-        is_online: isUserOnline(profile?.last_online || null),
-        role: member.role,
-        joined_at: member.joined_at,
-      };
-    });
-
-    setMembers(formattedMembers);
-
-    const newOnlineCount = formattedMembers.filter(m => m.is_online).length;
-    setCommunity(prev => prev ? { ...prev, online_count: newOnlineCount } : null);
-  };
-
-  fetchMembersAndOnlineCount();
-  const interval = setInterval(fetchMembersAndOnlineCount, 30_000);
-  return () => clearInterval(interval);
-}, [communityId, supabase, isUserOnline]);
-
-useEffect(() => {
-  if (!user) return;
-
-  const updateLastOnline = async () => {
-    await supabase
-      .from('profiles')
-      .update({ last_online: new Date().toISOString() })
-      .eq('id', user.id);
-  };
-
-  updateLastOnline(); // on mount
-  const interval = setInterval(updateLastOnline, 45_000); // every 45s
-  return () => clearInterval(interval);
-}, [user, supabase]);
+    updateLastOnline(); // on mount
+    const interval = setInterval(updateLastOnline, 45_000); // every 45s
+    return () => clearInterval(interval);
+  }, [user, supabase]);
 
   // In your page component, add this once:
   useEffect(() => {
@@ -635,11 +654,11 @@ useEffect(() => {
   }, []);
 
   useEffect(() => {
-  const checkMobile = () => setIsMobile(window.innerWidth < 768);
-  checkMobile();
-  window.addEventListener('resize', checkMobile);
-  return () => window.removeEventListener('resize', checkMobile);
-}, []);
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
 
 
@@ -648,20 +667,20 @@ useEffect(() => {
       router.push(`/auth?redirectTo=/communities/${communityId}`);
       return;
     }
-    
+
     if (isMember) {
       const { error } = await supabase
         .from('community_members')
         .delete()
         .eq('community_id', communityId)
         .eq('user_id', user.id);
-        
+
       if (error) {
         console.error('Error leaving community:', error);
         setError('Failed to leave community');
         return;
       }
-      
+
       setIsMember(false);
       setUserRole(null);
       setCommunity((prev) => (prev ? { ...prev, member_count: prev.member_count - 1 } : null));
@@ -674,13 +693,13 @@ useEffect(() => {
           joined_at: new Date().toISOString(),
           role: 'member',
         });
-        
+
       if (error) {
         console.error('Error joining community:', error);
         setError('Failed to join community');
         return;
       }
-      
+
       setIsMember(true);
       setUserRole('member');
       setCommunity((prev) => (prev ? { ...prev, member_count: prev.member_count + 1 } : null));
@@ -689,9 +708,9 @@ useEffect(() => {
 
   const createPostWithMedia = async (content: string, file: File | null, userId: string) => {
     if (!community) throw new Error('Community not loaded');
-    
+
     try {
-     const { data: postData, error: postError } = await supabase
+      const { data: postData, error: postError } = await supabase
         .from('community_posts')
         .insert({
           community_id: communityId,
@@ -709,41 +728,41 @@ useEffect(() => {
           user_id
         `)
         .single();
-        
+
       if (postError) throw postError;
-      
+
       let mediaUrl = null;
       if (file) {
         const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'video/mp4', 'video/quicktime'];
         if (!allowedTypes.includes(file.type)) throw new Error('Unsupported file type');
-        
+
         const maxSize = file.type.startsWith('video/') ? 15 : 5;
         if (file.size > maxSize * 1024 * 1024) throw new Error(`File must be less than ${maxSize}MB`);
-        
+
         const fileExt = file.name.split('.').pop();
         const fileName = `${communityId}/posts/${postData.id}.${fileExt}`;
         const { error: uploadError } = await supabase.storage
           .from('communities')
           .upload(fileName, file, { upsert: true, contentType: file.type });
-          
+
         if (uploadError) throw uploadError;
-        
+
         const { data } = supabase.storage.from('communities').getPublicUrl(fileName);
         mediaUrl = data.publicUrl;
-        
+
         if (mediaUrl) {
           await supabase.from('community_posts').update({ media_url: mediaUrl }).eq('id', postData.id);
         }
       }
-      
-     const { data: userData } = await supabase
+
+      const { data: userData } = await supabase
         .from('profiles')
         .select('full_name, avatar_url, is_anonymous')
         .eq('id', userId)
         .single();
-        
+
       const isAnonymous = userData?.is_anonymous || false;
-      
+
       return {
         id: postData.id,
         content: postData.content,
@@ -757,26 +776,26 @@ useEffect(() => {
         comments_count: 0,
         is_liked: false,
       };
-   } catch (error) {
-  console.error('Post creation failed:', error);
-  if (error instanceof Error && error.message?.includes('media')) {
-    // Safely access postId only if it exists on the error object
-    const maybeError = error as { message: string; postId?: string };
-    if (maybeError.postId) {
-      await supabase.from('community_posts').delete().eq('id', maybeError.postId);
+    } catch (error) {
+      console.error('Post creation failed:', error);
+      if (error instanceof Error && error.message?.includes('media')) {
+        // Safely access postId only if it exists on the error object
+        const maybeError = error as { message: string; postId?: string };
+        if (maybeError.postId) {
+          await supabase.from('community_posts').delete().eq('id', maybeError.postId);
+        }
+      }
+      throw error;
     }
-  }
-  throw error;
-}
   };
 
   const handleCreatePost = async (e: FormEvent) => {
     e.preventDefault();
     if (!user || !community || (!newPostContent.trim() && !newPostMedia)) return;
-    
+
     setError(null);
     setUploadingMedia(!!newPostMedia);
-    
+
     try {
       const newPost = await createPostWithMedia(newPostContent.trim(), newPostMedia, user.id);
       setPosts((prev) => [newPost, ...prev]);
@@ -784,18 +803,18 @@ useEffect(() => {
       setNewPostMedia(null);
       toast.success('Post created successfully!');
     } catch (err) {
-  console.error('Error creating post:', err);
-  
-  // Narrow the type safely
-  const errorMessage = err instanceof Error 
-    ? err.message 
-    : typeof err === 'string' 
-      ? err 
-      : 'Failed to create post';
+      console.error('Error creating post:', err);
 
-  setError(errorMessage);
-  toast.error('Failed to create post');
-}
+      // Narrow the type safely
+      const errorMessage = err instanceof Error
+        ? err.message
+        : typeof err === 'string'
+          ? err
+          : 'Failed to create post';
+
+      setError(errorMessage);
+      toast.error('Failed to create post');
+    }
   };
 
   const handleToggleLike = async (postId: string) => {
@@ -803,15 +822,15 @@ useEffect(() => {
       toast.error('Please sign in to like posts');
       return;
     }
-    
+
     setLikeLoading((prev) => ({ ...prev, [postId]: true }));
-    
+
     try {
       const result = await Hearts.toggleLike(postId, user.id, 'community_posts');
       setPosts((prevPosts) =>
-        prevPosts.map((post) => 
-          post.id === postId 
-            ? { ...post, is_liked: result.isLiked, likes_count: result.likesCount } 
+        prevPosts.map((post) =>
+          post.id === postId
+            ? { ...post, is_liked: result.isLiked, likes_count: result.likesCount }
             : post
         )
       );
@@ -825,18 +844,18 @@ useEffect(() => {
 
   const fetchComments = async (postId: string) => {
     if (!postId) return;
-    
+
     setCommentLoading((prev) => ({ ...prev, [postId]: true }));
-    
+
     try {
       const { data: allComments, error: commentsError } = await supabase
         .from('community_post_comments_with_profiles')
         .select('*')
         .eq('post_id', postId)
         .order('created_at', { ascending: true });
-        
+
       if (commentsError) throw commentsError;
-      
+
       const formattedComments = allComments.map((comment: CommunityPostCommentWithProfile) => ({
         id: comment.id,
         content: comment.content,
@@ -847,7 +866,7 @@ useEffect(() => {
         post_id: comment.post_id,
         parent_comment_id: comment.parent_comment_id ?? null,
       }));
-      
+
       const buildCommentTree = (comments: Comment[], parentId: string | null = null): CommentNode[] => {
         return comments
           .filter((comment) => comment.parent_comment_id === parentId)
@@ -861,22 +880,22 @@ useEffect(() => {
             };
           });
       };
-      
+
       const nestedComments = buildCommentTree(formattedComments);
       setComments((prev) => ({ ...prev, [postId]: nestedComments }));
-   } catch (error) {
-  console.error('Error fetching comments:', error);
-  toast.error('Failed to load comments');
-} finally {
-  setCommentLoading((prev) => ({ ...prev, [postId]: false }));
-}
+    } catch (error) {
+      console.error('Error fetching comments:', error);
+      toast.error('Failed to load comments');
+    } finally {
+      setCommentLoading((prev) => ({ ...prev, [postId]: false }));
+    }
   };
 
   const addComment = async (postId: string, content: string) => {
     if (!user || !content.trim() || !postId) return;
-    
+
     setAddingComment((prev) => ({ ...prev, [postId]: true }));
-    
+
     try {
       const { data: insertData, error: insertError } = await supabase
         .from('community_post_comments')
@@ -889,17 +908,17 @@ useEffect(() => {
         })
         .select('id, content, created_at, post_id, user_id')
         .single();
-        
+
       if (insertError) throw insertError;
-      
+
       const { data: commentWithProfile, error: profileError } = await supabase
         .from('community_post_comments_with_profiles')
         .select('*')
         .eq('id', insertData.id)
         .single();
-        
+
       if (profileError) throw profileError;
-      
+
       const newComment: CommentNode = {
         id: commentWithProfile.id,
         content: commentWithProfile.content,
@@ -912,40 +931,40 @@ useEffect(() => {
         replies: [],
         reply_count: 0,
       };
-      
+
       setComments((prev) => ({ ...prev, [postId]: [...(prev[postId] || []), newComment] }));
-      
+
       // Update comment count
       const { data: currentPost, error: postError } = await supabase
         .from('community_posts')
         .select('comments_count')
         .eq('id', postId)
         .single();
-        
+
       if (postError) throw postError;
-      
+
       const newCommentCount = (currentPost.comments_count || 0) + 1;
       await supabase.from('community_posts').update({ comments_count: newCommentCount }).eq('id', postId);
-      
+
       setPosts((prev) =>
         prev.map((post) => (post.id === postId ? { ...post, comments_count: newCommentCount } : post))
       );
-      
+
       setNewCommentContent((prev) => ({ ...prev, [postId]: '' }));
       toast.success('Comment added successfully');
     } catch (error) {
-  console.error('Error adding comment:', error);
-  toast.error('Failed to add comment');
-} finally {
-  setAddingComment((prev) => ({ ...prev, [postId]: false }));
-}
+      console.error('Error adding comment:', error);
+      toast.error('Failed to add comment');
+    } finally {
+      setAddingComment((prev) => ({ ...prev, [postId]: false }));
+    }
   };
 
   const addReply = async (postId: string, parentCommentId: string, content: string) => {
     if (!user || !content.trim() || !postId || !parentCommentId) return;
-    
+
     setAddingReply((prev) => ({ ...prev, [parentCommentId]: true }));
-    
+
     try {
       const { data: insertData, error: insertError } = await supabase
         .from('community_post_comments')
@@ -958,17 +977,17 @@ useEffect(() => {
         })
         .select('id, content, created_at, post_id, user_id, parent_comment_id')
         .single();
-        
+
       if (insertError) throw insertError;
-      
-     const { data: replyWithProfile, error: profileError } = await supabase
+
+      const { data: replyWithProfile, error: profileError } = await supabase
         .from('community_post_comments_with_profiles')
         .select('*')
         .eq('id', insertData.id)
         .single();
-        
+
       if (profileError) throw profileError;
-      
+
       const newReply: CommentNode = {
         id: replyWithProfile.id,
         content: replyWithProfile.content,
@@ -981,7 +1000,7 @@ useEffect(() => {
         replies: [],
         reply_count: 0,
       };
-      
+
       const updateCommentsState = (comments: CommentNode[]): CommentNode[] => {
         return comments.map((comment) => {
           if (comment.id === parentCommentId) {
@@ -991,48 +1010,48 @@ useEffect(() => {
               reply_count: (comment.reply_count || 0) + 1,
             };
           }
-          
+
           if (comment.replies && comment.replies.length > 0) {
             return {
               ...comment,
               replies: updateCommentsState(comment.replies),
             };
           }
-          
+
           return comment;
         });
       };
-      
+
       setComments((prev) => ({
         ...prev,
         [postId]: prev[postId] ? updateCommentsState(prev[postId]) : [newReply],
       }));
-      
+
       // Update comment count
       const { data: currentPost, error: postError } = await supabase
         .from('community_posts')
         .select('comments_count')
         .eq('id', postId)
         .single();
-        
+
       if (postError) throw postError;
-      
+
       const newCommentCount = (currentPost.comments_count || 0) + 1;
       await supabase.from('community_posts').update({ comments_count: newCommentCount }).eq('id', postId);
-      
+
       setPosts((prev) =>
         prev.map((post) => (post.id === postId ? { ...post, comments_count: newCommentCount } : post))
       );
-      
+
       setReplyContent((prev) => ({ ...prev, [parentCommentId]: '' }));
       setReplyingToComment((prev) => ({ ...prev, [parentCommentId]: false }));
       toast.success('Reply added successfully');
-   } catch (error) {
-  console.error('Error adding reply:', error);
-  toast.error('Failed to add reply');
-} finally {
-  setAddingReply((prev) => ({ ...prev, [parentCommentId]: false }));
-}
+    } catch (error) {
+      console.error('Error adding reply:', error);
+      toast.error('Failed to add reply');
+    } finally {
+      setAddingReply((prev) => ({ ...prev, [parentCommentId]: false }));
+    }
   };
 
   const deleteComment = async (commentId: string, postId: string, isReply = false) => {
@@ -1041,61 +1060,61 @@ useEffect(() => {
     } else {
       setDeletingCommentId(commentId);
     }
-    
+
     try {
       const { data: allComments, error: allCommentsError } = await supabase
         .from('community_post_comments')
         .select('id, parent_comment_id')
         .eq('post_id', postId);
-        
+
       if (allCommentsError) throw allCommentsError;
-      
+
       const getDescendantIds = (parentId: string): string[] => {
-  const directChildren = (allComments as FlatComment[]).filter(
-    (c) => c.parent_comment_id === parentId
-  );
-  return [
-    ...directChildren.map((c) => c.id),
-    ...directChildren.flatMap((c) => getDescendantIds(c.id)),
-  ];
-};
-      
+        const directChildren = (allComments as FlatComment[]).filter(
+          (c) => c.parent_comment_id === parentId
+        );
+        return [
+          ...directChildren.map((c) => c.id),
+          ...directChildren.flatMap((c) => getDescendantIds(c.id)),
+        ];
+      };
+
       const descendantIds = getDescendantIds(commentId);
       const totalCommentsToDelete = 1 + descendantIds.length;
-      
+
       const { error: deleteError } = await supabase
         .from('community_post_comments')
         .delete()
         .in('id', [commentId, ...descendantIds]);
-        
+
       if (deleteError) throw deleteError;
-      
+
       // Update comment count
       const { data: currentPost, error: postError } = await supabase
         .from('community_posts')
         .select('comments_count')
         .eq('id', postId)
         .single();
-        
+
       if (postError) throw postError;
-      
+
       const newCommentCount = Math.max(0, (currentPost.comments_count || 0) - totalCommentsToDelete);
       await supabase.from('community_posts').update({ comments_count: newCommentCount }).eq('id', postId);
-      
+
       // Update local state
       const removeCommentAndDescendants = (comments: CommentNode[]): CommentNode[] => {
         return comments.filter((comment) => {
           if (comment.id === commentId) return false;
-          
+
           if (comment.replies && comment.replies.length > 0) {
             comment.replies = removeCommentAndDescendants(comment.replies);
             comment.reply_count = comment.replies.length;
           }
-          
+
           return true;
         });
       };
-      
+
       setComments((prev) => {
         const updatedComments = { ...prev };
         if (updatedComments[postId]) {
@@ -1103,11 +1122,11 @@ useEffect(() => {
         }
         return updatedComments;
       });
-      
+
       setPosts((prev) =>
         prev.map((post) => (post.id === postId ? { ...post, comments_count: newCommentCount } : post))
       );
-      
+
       // Close expanded replies if needed
       if (expandedComments[commentId]) {
         setExpandedComments((prev) => {
@@ -1116,27 +1135,27 @@ useEffect(() => {
           return newExpanded;
         });
       }
-      
+
       toast.success(isReply ? 'Reply deleted successfully' : 'Comment and all replies deleted successfully');
     } catch (error: unknown) {
-  console.error(isReply ? 'Error deleting reply:' : 'Error deleting comment:', error);
-  if (error instanceof Error) {
-    toast.error(`Failed to delete ${isReply ? 'reply' : 'comment'}: ${error.message}`);
-  } else {
-    toast.error(`Failed to delete ${isReply ? 'reply' : 'comment'}`);
-  }
-} finally {
-  if (isReply) {
-    setDeletingReplyId(null); // ✅ Keep this exactly as is
-  } else {
-    setDeletingCommentId(null); // ✅ Keep this exactly as is
-  }
-}
+      console.error(isReply ? 'Error deleting reply:' : 'Error deleting comment:', error);
+      if (error instanceof Error) {
+        toast.error(`Failed to delete ${isReply ? 'reply' : 'comment'}: ${error.message}`);
+      } else {
+        toast.error(`Failed to delete ${isReply ? 'reply' : 'comment'}`);
+      }
+    } finally {
+      if (isReply) {
+        setDeletingReplyId(null); // ✅ Keep this exactly as is
+      } else {
+        setDeletingCommentId(null); // ✅ Keep this exactly as is
+      }
+    }
   };
 
   const toggleComments = (postId: string) => {
     setShowAllComments((prev) => ({ ...prev, [postId]: !prev[postId] }));
-    
+
     // Ensure we have all comments loaded when expanding
     if (!showAllComments[postId] && (!comments[postId] || comments[postId].length === 0)) {
       fetchComments(postId);
@@ -1159,71 +1178,71 @@ useEffect(() => {
 
   const updateBanner = async (file: File) => {
     if (!community) return;
-    
+
     setBannerUploading(true);
-    
+
     try {
       if (!file.type.startsWith('image/')) throw new Error('Only image files are allowed');
-      
+
       if (file.size > 5 * 1024 * 1024) throw new Error('Image must be less than 5MB');
-      
+
       const fileExt = file.name.split('.').pop();
       const fileName = `${communityId}/banner.${fileExt || 'jpg'}`;
-      
+
       const { error: uploadError } = await supabase.storage
         .from('communities')
         .upload(fileName, file, { upsert: true });
-        
+
       if (uploadError) throw uploadError;
-      
+
       const newBannerUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/communities/${fileName}?t=${Date.now()}`;
-      
+
       setCommunity((prev) => (prev ? { ...prev, cover_photo_url: newBannerUrl } : null));
       toast.success('Banner updated successfully!');
       setBannerModalOpen(false);
       setBannerPreview(null);
       setBannerFile(null);
     } catch (error: unknown) {
-  console.error('Banner update failed:', error);
-  if (error instanceof Error) {
-    setBannerUploadError(error.message || 'Failed to update banner');
-  } else {
-    setBannerUploadError('Failed to update banner');
-  }
-}finally {
+      console.error('Banner update failed:', error);
+      if (error instanceof Error) {
+        setBannerUploadError(error.message || 'Failed to update banner');
+      } else {
+        setBannerUploadError('Failed to update banner');
+      }
+    } finally {
       setBannerUploading(false);
     }
   };
 
   const deletePost = async (postId: string) => {
     setDeletingPostId(postId);
-    
+
     try {
       const { error } = await supabase
         .from('community_posts')
         .delete()
         .eq('id', postId)
         .eq('community_id', communityId);
-        
+
       if (error) throw error;
-      
+
       setPosts((prev) => prev.filter((post) => post.id !== postId));
-      
+
       setComments((prev) => {
         const newComments = { ...prev };
         delete newComments[postId];
         return newComments;
       });
-      
+
       toast.success('Post deleted successfully');
-   } catch (error: unknown) {
-  console.error('Post deletion failed:', error);
-  if (error instanceof Error) {
-    toast.error(error.message || 'Failed to delete post');
-  } else {
-    toast.error('Failed to delete post');
-  }
-} finally {
+    } catch (error: unknown) {
+      console.error('Post deletion failed:', error);
+      if (error instanceof Error) {
+        toast.error(error.message || 'Failed to delete post');
+      } else {
+        toast.error('Failed to delete post');
+      }
+    } finally {
       setDeletingPostId(null);
     }
   };
@@ -1231,48 +1250,48 @@ useEffect(() => {
   const handleBannerFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    
+
     e.target.value = '';
-    
+
     if (!file.type.startsWith('image/')) {
       setBannerUploadError('Please upload an image file (JPEG, PNG, GIF, etc.)');
       return;
     }
-    
+
     if (file.size > 5 * 1024 * 1024) {
       setBannerUploadError('Image must be less than 5MB');
       return;
     }
-    
+
     setBannerFile(file);
     setBannerUploadError(null);
-    
+
     const reader = new FileReader();
     reader.onloadend = () => {
       setBannerPreview(reader.result as string);
     };
-    
+
     reader.readAsDataURL(file);
   };
 
   const handlePostMediaSelect = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    
+
     e.target.value = '';
-    
+
     const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'video/mp4', 'video/quicktime'];
     if (!allowedTypes.includes(file.type)) {
       setError('Unsupported file type. Please upload JPG, PNG, GIF, MP4 or MOV files.');
       return;
     }
-    
+
     const maxSize = file.type.startsWith('video/') ? 15 : 5;
     if (file.size > maxSize * 1024 * 1024) {
       setError(`File must be less than ${maxSize}MB`);
       return;
     }
-    
+
     setNewPostMedia(file);
     setError(null);
   };
@@ -1293,33 +1312,33 @@ useEffect(() => {
       </div>
     );
   }
-  
+
   if (error) {
     return (
       <div style={pageContainer}>
         {community && (
-  <Head>
-    <title>{community.name} • Healing Shoulder</title>
-    <meta property="og:title" content={community.name} />
-    <meta
-      property="og:description"
-      content={community.description?.substring(0, 160) || 'A compassionate space for shared grief and healing.'}
-    />
-    <meta property="og:type" content="website" />
-    <meta
-      property="og:url"
-      content={`https://healingshoulder.site/community/${communityId}/${community.name.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/[\s-]+/g, '-').replace(/^-+|-+$/g, '')}`}
-    />
-    <meta
-      property="og:image"
-      content={
-        community.cover_photo_url ||
-        `https://healingshoulder.site/og-community-default.jpg`
-      }
-    />
-    <meta name="twitter:card" content="summary_large_image" />
-  </Head>
-)}
+          <Head>
+            <title>{community.name} • Healing Shoulder</title>
+            <meta property="og:title" content={community.name} />
+            <meta
+              property="og:description"
+              content={community.description?.substring(0, 160) || 'A compassionate space for shared grief and healing.'}
+            />
+            <meta property="og:type" content="website" />
+            <meta
+              property="og:url"
+              content={`https://healingshoulder.site/community/${communityId}/${community.name.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/[\s-]+/g, '-').replace(/^-+|-+$/g, '')}`}
+            />
+            <meta
+              property="og:image"
+              content={
+                community.cover_photo_url ||
+                `https://healingshoulder.site/og-community-default.jpg`
+              }
+            />
+            <meta name="twitter:card" content="summary_large_image" />
+          </Head>
+        )}
         <div
           style={{
             background: baseColors.surface,
@@ -1343,7 +1362,7 @@ useEffect(() => {
       </div>
     );
   }
-  
+
   if (!community) {
     return (
       <div style={pageContainer}>
@@ -1372,72 +1391,87 @@ useEffect(() => {
       </div>
     );
   }
-  
+
   const gradient = griefGradients[community.grief_type] || defaultGradient;
   const isAdmin = userRole === 'admin';
   const isModerator = userRole === 'moderator' || isAdmin;
   const authUsername = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Anonymous';
 
-const renderCommentPreview = (comment: Comment) => {
-  return (
-    <div style={{ display: 'flex', gap: spacing.md, marginBottom: spacing.md }}>
-      <div
-        style={{
-          width: '2rem',
-          height: '2rem',
-          borderRadius: borderRadius.full,
-          background: gradient,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexShrink: 0,
-          fontSize: '0.75rem',
-          fontWeight: 600,
-          color: 'white',
-          position: 'relative', // Required for absolute positioning of Image
-        }}
-      >
-        {comment.avatar_url ? (
-          <Image
-            src={comment.avatar_url}
-            alt={comment.username}
-            fill
-            style={{ borderRadius: borderRadius.full, objectFit: 'cover' }}
-          />
-        ) : (
-          comment.username[0]?.toUpperCase() || 'U'
-        )}
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
+  const renderCommentPreview = (comment: Comment) => {
+    return (
+      <div style={{ display: 'flex', gap: spacing.md, marginBottom: spacing.md }}>
         <div
           style={{
-            background: '#f8fafc',
-            borderRadius: borderRadius.md,
-            padding: spacing.md,
+            width: '2rem',
+            height: '2rem',
+            borderRadius: borderRadius.full,
+            background: gradient,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            fontSize: '0.75rem',
+            fontWeight: 600,
+            color: 'white',
+            position: 'relative', // Required for absolute positioning of Image
           }}
         >
-          <h4 style={{ fontWeight: 600, color: baseColors.text.primary, fontSize: '0.875rem' }}>
-            {comment.username}
-          </h4>
-          <p style={{ color: baseColors.text.muted, fontSize: '0.75rem', marginTop: '0.125rem' }}>
-            {formatRecentActivity(comment.created_at)}
-          </p>
-          <p
+          {comment.avatar_url ? (
+            <Image
+              src={comment.avatar_url}
+              alt={comment.username}
+              fill
+              style={{ borderRadius: borderRadius.full, objectFit: 'cover' }}
+            />
+          ) : (
+            comment.username[0]?.toUpperCase() || 'U'
+          )}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
             style={{
-              color: baseColors.text.primary,
-              fontSize: '0.875rem',
-              marginTop: spacing.sm,
-              whiteSpace: 'pre-line',
+              background: '#f8fafc',
+              borderRadius: borderRadius.md,
+              padding: spacing.md,
             }}
           >
-            {comment.content}
-          </p>
+            {comment.user_id && !comment.username.toLowerCase().includes('anonymous') ? (
+              <Link
+                href={`/profile/${comment.user_id}`}
+                style={{
+                  fontWeight: 600,
+                  color: baseColors.primary,
+                  fontSize: '0.875rem',
+                  textDecoration: 'none',
+                }}
+                aria-label={`View ${comment.username}'s profile`}
+              >
+                {comment.username}
+              </Link>
+            ) : (
+              <span style={{ fontWeight: 600, color: baseColors.text.primary, fontSize: '0.875rem' }}>
+                {comment.username}
+              </span>
+            )}
+            <p style={{ color: baseColors.text.muted, fontSize: '0.75rem', marginTop: '0.125rem' }}>
+              {formatRecentActivity(comment.created_at)}
+            </p>
+            <p
+              style={{
+                color: baseColors.text.primary,
+                fontSize: '0.875rem',
+                marginTop: spacing.sm,
+                whiteSpace: 'pre-line',
+              }}
+            >
+              {comment.content}
+            </p>
+          </div>
         </div>
       </div>
-    </div>
-  );
-};
-  
+    );
+  };
+
   const renderComment = (comment: Comment, postId: string, depth = 0) => {
     const isNested = depth > 0;
     return (
@@ -1479,7 +1513,24 @@ const renderCommentPreview = (comment: Comment) => {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <h4 style={{ fontWeight: 600, color: baseColors.text.primary, fontSize: '0.875rem' }}>{comment.username}</h4>
+                {comment.user_id && !comment.username.toLowerCase().includes('anonymous') ? (
+                  <Link
+                    href={`/profile/${comment.user_id}`}
+                    style={{
+                      fontWeight: 600,
+                      color: baseColors.primary,
+                      fontSize: '0.875rem',
+                      textDecoration: 'none',
+                    }}
+                    aria-label={`View ${comment.username}'s profile`}
+                  >
+                    {comment.username}
+                  </Link>
+                ) : (
+                  <span style={{ fontWeight: 600, color: baseColors.text.primary, fontSize: '0.875rem' }}>
+                    {comment.username}
+                  </span>
+                )}
                 <p style={{ color: baseColors.text.muted, fontSize: '0.75rem', marginTop: '0.125rem' }}>
                   {formatRecentActivity(comment.created_at)}
                 </p>
@@ -1604,7 +1655,7 @@ const renderCommentPreview = (comment: Comment) => {
       <div
         style={{
           position: 'relative',
-          height: '12rem',
+          height: isMobile ? '15rem' : '38rem', // 👈 Responsive height!
           overflow: 'hidden',
           marginBottom: spacing['2xl'],
           borderRadius: borderRadius.md,
@@ -1650,37 +1701,133 @@ const renderCommentPreview = (comment: Comment) => {
           </button>
         )}
       </div>
-      
+
       {/* Responsive container: column on mobile, row on desktop */}
-<div
-  style={{
-    maxWidth: '1152px',
-    margin: '0 auto',
-    display: 'flex',
-    flexDirection: isMobile ? 'column' : 'row',
-    gap: spacing['2xl'],
-  }}
->
+      <div
+        style={{
+          maxWidth: '1152px',
+          margin: '0 auto',
+          display: 'flex',
+          flexDirection: isMobile ? 'column' : 'row',
+          gap: spacing['2xl'],
+        }}
+      >
         {/* Main Feed */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: spacing['2xl'] }}>
+
+
           {/* Community Header */}
           <div style={cardStyle}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.lg, position: 'relative' }}>
+
+              {/* Three-dot menu (visible only to members) */}
+              {user && isMember && (
+  <div
+    ref={kebabMenuRef}
+    style={{ position: 'absolute', top: spacing.sm, right: spacing.sm, zIndex: 1 }}
+  >
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        setIsKebabOpen((prev) => !prev);
+      }}
+      style={{
+        background: 'transparent',
+        border: 'none',
+        cursor: 'pointer',
+        padding: spacing.xs,
+        borderRadius: borderRadius.sm,
+        color: baseColors.text.muted,
+      }}
+      aria-label="Community options"
+    >
+      <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>⋯</span>
+    </button>
+
+    {isKebabOpen && (
+      <div
+        style={{
+          position: 'absolute',
+          top: '100%',
+          right: 0,
+          marginTop: spacing.xs,
+          backgroundColor: baseColors.surface,
+          border: `1px solid ${baseColors.border}`,
+          borderRadius: borderRadius.md,
+          boxShadow:
+            '0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06)',
+          minWidth: '120px',
+          zIndex: 10,
+        }}
+      >
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            handleMembership();
+            setIsKebabOpen(false);
+          }}
+          style={{
+            width: '100%',
+            textAlign: 'left',
+            padding: `${spacing.sm} ${spacing.md}`,
+            background: 'none',
+            border: 'none',
+            color: '#ef4444',
+            cursor: 'pointer',
+            fontSize: '0.875rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: spacing.sm,
+          }}
+        >
+          <LogOut size={16} />
+          Leave Community
+        </button>
+      </div>
+    )}
+  </div>
+)}
+
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: spacing.lg }}>
+                {/* Banner Thumbnail or Fallback Icon */}
                 <div
                   style={{
                     width: '4rem',
                     height: '4rem',
                     borderRadius: borderRadius.md,
-                    background: gradient,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
+                    overflow: 'hidden',
                     flexShrink: 0,
+                    position: 'relative',
                   }}
                 >
-                  <Users size={32} color="white" />
+                  {community.cover_photo_url ? (
+                    <Image
+                      src={community.cover_photo_url}
+                      alt={`${community.name} banner`}
+                      fill
+                      style={{ objectFit: 'cover' }}
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = `https://via.placeholder.com/1200x300/fcd34d-f97316?text=${encodeURIComponent(community.name)}`;
+                      }}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        background: gradient,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'white',
+                      }}
+                    >
+                      <Users size={32} />
+                    </div>
+                  )}
                 </div>
+
+                {/* Community Info */}
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: baseColors.text.primary }}>{community.name}</h1>
                   <p style={{ color: baseColors.text.secondary, marginTop: spacing.sm }}>{community.description}</p>
@@ -1706,19 +1853,24 @@ const renderCommentPreview = (comment: Comment) => {
                   </div>
                 </div>
               </div>
+
+              {/* Primary Action Button — Join only */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
-                {user ? (
-                  <button onClick={handleMembership} style={buttonStyle(isMember ? '#ef4444' : baseColors.primary)}>
-                    {isMember ? <><LogOut size={18} /> Leave Community</> : <><LogIn size={18} /> Join Community</>}
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => router.push(`/auth?redirectTo=/communities/${communityId}`)}
-                    style={buttonStyle(baseColors.primary)}
-                  >
-                    <LogIn size={18} /> Sign in to Join
-                  </button>
-                )}
+                {!isMember ? (
+                  user ? (
+                    <button onClick={handleMembership} style={buttonStyle(baseColors.primary)}>
+                      <LogIn size={18} /> Join Community
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => router.push(`/auth?redirectTo=/communities/${communityId}`)}
+                      style={buttonStyle(baseColors.primary)}
+                    >
+                      <LogIn size={18} /> Sign in to Join
+                    </button>
+                  )
+                ) : null}
+
                 {isAdmin && (
                   <button
                     onClick={() => toast('Community settings coming soon!')}
@@ -1730,7 +1882,7 @@ const renderCommentPreview = (comment: Comment) => {
               </div>
             </div>
           </div>
-          
+
           {/* Create Post */}
           {isMember && (
             <div style={cardStyle}>
@@ -1764,22 +1916,22 @@ const renderCommentPreview = (comment: Comment) => {
                     )}
                   </div>
                   <div style={{ flex: 1 }}>
-                <textarea
-  value={newPostContent}
-  onChange={(e) => setNewPostContent(e.target.value)}
-  placeholder={`What's on your mind, ${authUsername}? Share your thoughts, memories, or questions with the community...`}
-  style={{
-    width: '100%',
-    padding: `${spacing.sm} ${spacing.md}`,
-    border: `1px solid ${baseColors.border}`,
-    borderRadius: borderRadius.md,
-    minHeight: '100px',
-    maxHeight: '200px',
-    resize: 'vertical',
-    fontSize: '0.875rem',
-  }}
-  maxLength={500}
-/>
+                    <textarea
+                      value={newPostContent}
+                      onChange={(e) => setNewPostContent(e.target.value)}
+                      placeholder={`What's on your mind, ${authUsername}? Share your thoughts, memories, or questions with the community...`}
+                      style={{
+                        width: '100%',
+                        padding: `${spacing.sm} ${spacing.md}`,
+                        border: `1px solid ${baseColors.border}`,
+                        borderRadius: borderRadius.md,
+                        minHeight: '100px',
+                        maxHeight: '200px',
+                        resize: 'vertical',
+                        fontSize: '0.875rem',
+                      }}
+                      maxLength={500}
+                    />
                     {newPostMedia && (
                       <div style={{ marginTop: spacing.md, padding: spacing.md, background: '#f8fafc', borderRadius: borderRadius.md, position: 'relative' }}>
                         <button
@@ -1877,7 +2029,7 @@ const renderCommentPreview = (comment: Comment) => {
               </form>
             </div>
           )}
-          
+
           {/* Posts */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: spacing['2xl'] }}>
             {posts.length === 0 ? (
@@ -1939,7 +2091,23 @@ const renderCommentPreview = (comment: Comment) => {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: spacing.md }}>
                         <div>
-                          <h3 style={{ fontWeight: 600, color: baseColors.text.primary }}>{post.username}</h3>
+                          {post.user_id && !post.username.toLowerCase().includes('anonymous') ? (
+                            <Link
+                              href={`/profile/${post.user_id}`}
+                              style={{
+                                fontWeight: 600,
+                                color: baseColors.primary,
+                                textDecoration: 'none',
+                              }}
+                              aria-label={`View ${post.username}'s profile`}
+                            >
+                              {post.username}
+                            </Link>
+                          ) : (
+                            <span style={{ fontWeight: 600, color: baseColors.text.primary }}>
+                              {post.username}
+                            </span>
+                          )}
                           <p style={{ color: baseColors.text.muted, fontSize: '0.75rem' }}>
                             {formatRecentActivity(post.created_at)}
                           </p>
@@ -1968,27 +2136,27 @@ const renderCommentPreview = (comment: Comment) => {
                         {post.content}
                       </p>
                       {post.media_url && post.media_url !== 'uploading' && (
-  post.media_url.includes('video') ? (
-    <video src={post.media_url} controls style={{ /* ... */ }} />
-  ) : (
-   <Image
-  src={post.media_url}
-  alt="Post media"
-  width={800}
-  height={400}
-  style={{
-    width: '100%',
-    height: 'auto',
-    maxHeight: '400px',
-    objectFit: 'contain', // or 'cover' if you prefer cropping
-    borderRadius: borderRadius.md,
-  }}
-  onError={(e) => {
-    (e.target as HTMLImageElement).parentElement!.style.display = 'none';
-  }}
-/>
-  )
-)}
+                        post.media_url.includes('video') ? (
+                          <video src={post.media_url} controls style={{ /* ... */ }} />
+                        ) : (
+                          <Image
+                            src={post.media_url}
+                            alt="Post media"
+                            width={800}
+                            height={400}
+                            style={{
+                              width: '100%',
+                              height: 'auto',
+                              maxHeight: '400px',
+                              objectFit: 'contain', // or 'cover' if you prefer cropping
+                              borderRadius: borderRadius.md,
+                            }}
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).parentElement!.style.display = 'none';
+                            }}
+                          />
+                        )
+                      )}
                       <div
                         style={{
                           display: 'flex',
@@ -2041,7 +2209,7 @@ const renderCommentPreview = (comment: Comment) => {
                           {post.comments_count}
                         </button>
                       </div>
-                      
+
                       {/* Comments Section - Always visible, but shows different content based on state */}
                       <div style={{ marginTop: spacing.lg, paddingTop: spacing.lg, borderTop: `1px solid ${baseColors.border}` }}>
                         {commentLoading[post.id] && showAllComments[post.id] ? (
@@ -2055,10 +2223,10 @@ const renderCommentPreview = (comment: Comment) => {
                         ) : (
                           <>
                             {/* Show only the latest comment when not expanded */}
-                           { !showAllComments[post.id] && comments[post.id] && comments[post.id].length > 0 && (
-  renderCommentPreview(comments[post.id][0])
-)}
-                            
+                            {!showAllComments[post.id] && comments[post.id] && comments[post.id].length > 0 && (
+                              renderCommentPreview(comments[post.id][0])
+                            )}
+
                             {/* Show all comments when expanded */}
                             {showAllComments[post.id] && (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.lg, maxHeight: '600px', overflowY: 'auto' }}>
@@ -2067,7 +2235,7 @@ const renderCommentPreview = (comment: Comment) => {
                                 ))}
                               </div>
                             )}
-                            
+
                             {/* Toggle button - only show if there are multiple comments */}
                             {comments[post.id] && comments[post.id].length > 1 && (
                               <button
@@ -2100,7 +2268,7 @@ const renderCommentPreview = (comment: Comment) => {
                           </>
                         )}
                       </div>
-                      
+
                       {/* Comment input box - always visible */}
                       {user && (
                         <div style={{ marginTop: spacing.lg, display: 'flex', gap: spacing.md }}>
@@ -2183,7 +2351,7 @@ const renderCommentPreview = (comment: Comment) => {
             )}
           </div>
         </div>
-        
+
         {/* Sidebar */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: spacing['2xl'] }}>
           {/* Members */}
@@ -2193,14 +2361,14 @@ const renderCommentPreview = (comment: Comment) => {
                 <Users size={20} style={{ color: baseColors.primary }} />
                 Community Members
               </h2>
-             {isMember && community && (
-  <ShareCommunityButton
-    communityId={community.id}
-    communityName={community.name}
-    communityDescription={community.description || ''}
-    style={{ ...outlineButtonStyle, fontSize: '0.875rem', padding: `${spacing.sm} ${spacing.sm}` }}
-  />
-)}        </div>
+              {isMember && community && (
+                <ShareCommunityButton
+                  communityId={community.id}
+                  communityName={community.name}
+                  communityDescription={community.description || ''}
+                  style={{ ...outlineButtonStyle, fontSize: '0.875rem', padding: `${spacing.sm} ${spacing.sm}` }}
+                />
+              )}        </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md, maxHeight: '500px', overflowY: 'auto' }}>
               {members.map((member) => (
                 <div
@@ -2260,36 +2428,61 @@ const renderCommentPreview = (comment: Comment) => {
                       )}
                     </div>
                     <div style={{ minWidth: 0 }}>
-                      <p style={{ fontWeight: 600, color: baseColors.text.primary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {member.username}
-                      </p>
+                      {member.user_id && !member.username.toLowerCase().includes('anonymous') ? (
+                        <Link
+                          href={`/profile/${member.user_id}`}
+                          style={{
+                            fontWeight: 600,
+                            color: baseColors.primary,
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            textDecoration: 'none',
+                          }}
+                          aria-label={`View ${member.username}'s profile`}
+                        >
+                          {member.username}
+                        </Link>
+                      ) : (
+                        <span
+                          style={{
+                            fontWeight: 600,
+                            color: baseColors.text.primary,
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }}
+                        >
+                          {member.username}
+                        </span>
+                      )}
                       <p style={{ color: baseColors.text.muted, fontSize: '0.75rem' }}>Joined {formatRecentActivity(member.joined_at)}</p>
                     </div>
                   </div>
-                 {member.role !== 'member' && (
-  <span
-    style={{
-      fontSize: '0.6875rem',
-      fontWeight: 600,
-      // 👇 Reduce padding to avoid pushing height up
-      padding: '0.0625rem 0.375rem', // 1px top/bottom, 6px left/right
-      borderRadius: '0.375rem',
-      background: member.role === 'admin' ? '#fef9c3' : '#ede9fe',
-      color: member.role === 'admin' ? '#92400e' : '#6d28d9',
-      border: member.role === 'admin' ? '1px solid #fde68a' : '1px solid #ddd6fe',
-      lineHeight: '1.2', // 👈 Match text line height better
-      whiteSpace: 'nowrap',
-      
-      alignSelf: 'center', // 👈 Key fix: aligns with parent's text
-      height: '20px',     // 👈 Explicit height
-      display: 'flex',
-      alignItems: 'center', // 👈 Center content vertically inside badge
-      justifyContent: 'center', // 👈 Optional: centers text horizontally too
-    }}
-  >
-    {member.role}
-  </span>
-)}
+                  {member.role !== 'member' && (
+                    <span
+                      style={{
+                        fontSize: '0.6875rem',
+                        fontWeight: 600,
+                        // 👇 Reduce padding to avoid pushing height up
+                        padding: '0.0625rem 0.375rem', // 1px top/bottom, 6px left/right
+                        borderRadius: '0.375rem',
+                        background: member.role === 'admin' ? '#fef9c3' : '#ede9fe',
+                        color: member.role === 'admin' ? '#92400e' : '#6d28d9',
+                        border: member.role === 'admin' ? '1px solid #fde68a' : '1px solid #ddd6fe',
+                        lineHeight: '1.2', // 👈 Match text line height better
+                        whiteSpace: 'nowrap',
+
+                        alignSelf: 'center', // 👈 Key fix: aligns with parent's text
+                        height: '20px',     // 👈 Explicit height
+                        display: 'flex',
+                        alignItems: 'center', // 👈 Center content vertically inside badge
+                        justifyContent: 'center', // 👈 Optional: centers text horizontally too
+                      }}
+                    >
+                      {member.role}
+                    </span>
+                  )}
                 </div>
               ))}
             </div>
@@ -2308,7 +2501,7 @@ const renderCommentPreview = (comment: Comment) => {
               </button>
             )}
           </div>
-          
+
           {/* Guidelines */}
           <div style={cardStyle}>
             <h2
@@ -2336,14 +2529,14 @@ const renderCommentPreview = (comment: Comment) => {
             <ul style={{ listStyle: 'none', padding: 0, color: baseColors.text.secondary, fontSize: '0.875rem', lineHeight: 1.5 }}>
               <li>• Share from the heart, listen with compassion</li>
               <li>• Respect different grief journeys and timelines</li>
-              <li>• No unsolicited advice - ask before offering support</li>
+              <li>• No unsolicited advice </li>
               <li>• Keep personal details confidential</li>
               <li>• Report harmful content to moderators</li>
             </ul>
           </div>
         </div>
       </div>
-      
+
       {/* Banner Modal */}
       {bannerModalOpen && (
         <div
@@ -2493,7 +2686,7 @@ const renderCommentPreview = (comment: Comment) => {
           </div>
         </div>
       )}
-      
+
       {/* Animation */}
       <style jsx>{`
         @keyframes spin {
