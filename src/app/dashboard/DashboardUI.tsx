@@ -13,10 +13,10 @@ import {
   ToggleLeft,
   User,
 } from 'lucide-react';
-import type { 
-  GriefType, 
-  Post, 
-  UserProfile, 
+import type {
+  GriefType,
+  Post,
+  UserProfile,
   UserPreferences,
   DashboardUIProps
 } from './useDashboardLogic';
@@ -99,12 +99,20 @@ export function DashboardUI({
   toggleAcceptsVideoCalls,
   toggleAnonymity,
   updateFullName,
-  updateAvatar, 
+  updateAvatar,
   setShowSettings,
   setShowGriefSetup,
   setNewPostText,
   onConnectClick,
   onCommunitiesClick,
+  aboutText,
+  setAboutText,
+  isEditingAbout,
+  setIsEditingAbout,
+  isExpanded,
+  setIsExpanded,
+  saveAbout,
+
 }: DashboardUIProps) {
   if (isLoading) {
     return (
@@ -149,8 +157,16 @@ export function DashboardUI({
         toggleAcceptsVideoCalls={toggleAcceptsVideoCalls}
         toggleAnonymity={toggleAnonymity}
         updateFullName={updateFullName}
-         updateAvatar={updateAvatar} 
-        
+        updateAvatar={updateAvatar}
+        aboutText={aboutText}
+        setAboutText={setAboutText}
+        isEditingAbout={isEditingAbout}
+        setIsEditingAbout={setIsEditingAbout}
+        isExpanded={isExpanded}
+        setIsExpanded={setIsExpanded}
+        saveAbout={saveAbout}
+        isSubmitting={isSubmitting}
+
       />
     );
   }
@@ -161,7 +177,7 @@ export function DashboardUI({
       background: 'linear-gradient(to bottom, #fffbeb, #fafaf9, #f5f5f4)',
       padding: '1rem',
       paddingBottom: '10rem',
-      paddingTop: '1.5rem',
+      paddingTop: '3.5rem',
     }}>
       <div style={{
         maxWidth: '1024px',
@@ -186,8 +202,8 @@ export function DashboardUI({
             {error}
           </div>
         )}
-        
-        <ProfileContextSection 
+
+        <ProfileContextSection
           profile={profile}
           setShowSettings={setShowSettings}
           setShowGriefSetup={setShowGriefSetup}
@@ -210,7 +226,7 @@ export function DashboardUI({
 
         <PostsSection posts={posts} />
 
-        <SupportOptions 
+        <SupportOptions
           onConnectClick={onConnectClick}
           onCommunitiesClick={onCommunitiesClick}
         />
@@ -222,12 +238,12 @@ export function DashboardUI({
 }
 
 // =============== Reusable Subcomponents with Inline CSS ===============
-const GriefSetupModal = ({ 
-  selectedGriefTypes, 
-  error, 
-  toggleGriefType, 
+const GriefSetupModal = ({
+  selectedGriefTypes,
+  error,
+  toggleGriefType,
   handleSaveGriefTypes,
-  isSubmitting 
+  isSubmitting
 }: {
   selectedGriefTypes: GriefType[];
   error: string | null;
@@ -261,7 +277,7 @@ const GriefSetupModal = ({
       }}>
         You can choose more than one. This helps us connect you with the right people.
       </p>
-      
+
       {error && (
         <div style={{
           marginBottom: '1rem',
@@ -274,7 +290,7 @@ const GriefSetupModal = ({
           {error}
         </div>
       )}
-      
+
       <div style={{ display: 'flex', flexDirection: 'column' as const, gap: '0.75rem', marginBottom: '1.5rem' }}>
         {(Object.keys(griefTypeLabels) as GriefType[]).map((type) => (
           <button
@@ -303,7 +319,7 @@ const GriefSetupModal = ({
           </button>
         ))}
       </div>
-      
+
       <button
         onClick={handleSaveGriefTypes}
         disabled={selectedGriefTypes.length === 0 || isSubmitting}
@@ -322,7 +338,7 @@ const GriefSetupModal = ({
       >
         {isSubmitting ? 'Saving...' : 'Save & Continue'}
       </button>
-      
+
       <p style={{
         textAlign: 'center',
         fontSize: '0.75rem',
@@ -335,18 +351,26 @@ const GriefSetupModal = ({
   </div>
 );
 
-const SettingsModal = ({ 
-  profile, 
-  preferences, 
-  error, 
+const SettingsModal = ({
+  profile,
+  preferences,
+  error,
   setShowSettings,
   setShowGriefSetup,
   toggleAcceptsCalls,
   toggleAcceptsVideoCalls,
   toggleAnonymity,
-  
+
   updateFullName,
-    updateAvatar,
+  updateAvatar,
+  aboutText,
+  setAboutText,
+  isEditingAbout,
+  setIsEditingAbout,
+  isExpanded,
+  setIsExpanded,
+  saveAbout,
+  isSubmitting,
 }: {
   profile: UserProfile | null;
   preferences: UserPreferences;
@@ -357,15 +381,25 @@ const SettingsModal = ({
   toggleAcceptsVideoCalls: () => Promise<void>;
   toggleAnonymity: () => Promise<void>;
   updateFullName: (firstName: string, lastName: string) => Promise<void>;
-    updateAvatar: (file: File) => Promise<void>; 
-  
+  updateAvatar: (file: File) => Promise<void>;
+  aboutText: string;
+  setAboutText: (text: string) => void;
+  isEditingAbout: boolean;
+  setIsEditingAbout: (editing: boolean) => void;
+  isExpanded: boolean;
+  setIsExpanded: (expanded: boolean) => void;
+  saveAbout: () => Promise<void>;
+  isSubmitting: boolean;
+
 }) => {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [isSavingName, setIsSavingName] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
   const [avatarError, setAvatarError] = useState<string | null>(null);
-const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+
+
 
   useEffect(() => {
     if (profile?.fullName) {
@@ -387,10 +421,10 @@ const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
       setNameError('First name is required');
       return;
     }
-    
+
     setNameError(null);
     setIsSavingName(true);
-    
+
     try {
       await updateFullName(firstName.trim(), lastName.trim());
     } catch (err) {
@@ -400,7 +434,7 @@ const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
     }
   };
 
-    return (
+  return (
     <div
       style={{
         minHeight: '100dvh',
@@ -439,98 +473,98 @@ const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
         )}
 
         {/* Profile Picture Section */}
-<div style={{ ...baseStyles.card, marginBottom: '1.5rem' }}>
-  <div style={{ display: 'flex', gap: '0.75rem' }}>
-    <div style={{ padding: '0.5rem', backgroundColor: '#fef3c7', borderRadius: '0.5rem' }}>
-      <Camera size={20} style={{ color: '#92400e' }} />
-    </div>
-    <div style={{ flex: 1 }}>
-      <h3 style={{ fontWeight: 500, color: '#1c1917', marginBottom: '0.75rem' }}>Profile Picture</h3>
-      
-      {/* Preview */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
-        <div style={{
-          width: '3rem',
-          height: '3rem',
-          borderRadius: '9999px',
-          overflow: 'hidden',
-          border: '1px solid #e7e5e4',
-        }}>
-          {profile?.avatarUrl ? (
-            <Image
-              src={profile.avatarUrl}
-              alt="Profile"
-              width={48}
-              height={48}
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-              unoptimized
-            />
-          ) : (
-            <div style={{
-              width: '100%',
-              height: '100%',
-              backgroundColor: '#f5f5f4',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#78716c',
-              fontSize: '1rem',
-            }}>
-              {(profile?.fullName || 'U').charAt(0).toUpperCase()}
+        <div style={{ ...baseStyles.card, marginBottom: '1.5rem' }}>
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <div style={{ padding: '0.5rem', backgroundColor: '#fef3c7', borderRadius: '0.5rem' }}>
+              <Camera size={20} style={{ color: '#92400e' }} />
             </div>
-          )}
+            <div style={{ flex: 1 }}>
+              <h3 style={{ fontWeight: 500, color: '#1c1917', marginBottom: '0.75rem' }}>Profile Picture</h3>
+
+              {/* Preview */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                <div style={{
+                  width: '3rem',
+                  height: '3rem',
+                  borderRadius: '9999px',
+                  overflow: 'hidden',
+                  border: '1px solid #e7e5e4',
+                }}>
+                  {profile?.avatarUrl ? (
+                    <Image
+                      src={profile.avatarUrl}
+                      alt="Profile"
+                      width={48}
+                      height={48}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      unoptimized
+                    />
+                  ) : (
+                    <div style={{
+                      width: '100%',
+                      height: '100%',
+                      backgroundColor: '#f5f5f4',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#78716c',
+                      fontSize: '1rem',
+                    }}>
+                      {(profile?.fullName || 'U').charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                </div>
+                <span style={{ fontSize: '0.875rem', color: '#44403c' }}>
+                  {profile?.avatarUrl ? 'Change photo' : 'Add a photo'}
+                </span>
+              </div>
+
+              {/* Hidden file input */}
+              <input
+                type="file"
+                accept="image/*"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    setIsUploadingAvatar(true);
+                    setAvatarError(null);
+                    try {
+                      await updateAvatar(file);
+                    } catch (err) {
+                      setAvatarError(err instanceof Error ? err.message : 'Upload failed');
+                    } finally {
+                      setIsUploadingAvatar(false);
+                      // Reset input
+                      if (e.target) e.target.value = '';
+                    }
+                  }
+                }}
+                style={{ display: 'none' }}
+                id="avatar-upload"
+              />
+
+              <button
+                onClick={() => document.getElementById('avatar-upload')?.click()}
+                style={{
+                  ...baseStyles.buttonBase,
+                  padding: '0.5rem 0.75rem',
+                  backgroundColor: '#f59e0b',
+                  color: '#fff',
+                  fontSize: '0.875rem',
+                }}
+                disabled={isUploadingAvatar}
+              >
+                {isUploadingAvatar ? 'Uploading...' : profile?.avatarUrl ? 'Change Photo' : 'Add Photo'}
+              </button>
+
+              {avatarError && (
+                <div style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.5rem' }}>
+                  {avatarError}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
-        <span style={{ fontSize: '0.875rem', color: '#44403c' }}>
-          {profile?.avatarUrl ? 'Change photo' : 'Add a photo'}
-        </span>
-      </div>
-
-      {/* Hidden file input */}
-      <input
-        type="file"
-        accept="image/*"
-        onChange={async (e) => {
-          const file = e.target.files?.[0];
-          if (file) {
-            setIsUploadingAvatar(true);
-            setAvatarError(null);
-            try {
-              await updateAvatar(file);
-            } catch (err) {
-              setAvatarError(err instanceof Error ? err.message : 'Upload failed');
-            } finally {
-              setIsUploadingAvatar(false);
-              // Reset input
-              if (e.target) e.target.value = '';
-            }
-          }
-        }}
-        style={{ display: 'none' }}
-        id="avatar-upload"
-      />
-
-      <button
-        onClick={() => document.getElementById('avatar-upload')?.click()}
-        style={{
-          ...baseStyles.buttonBase,
-          padding: '0.5rem 0.75rem',
-          backgroundColor: '#f59e0b',
-          color: '#fff',
-          fontSize: '0.875rem',
-        }}
-        disabled={isUploadingAvatar}
-      >
-        {isUploadingAvatar ? 'Uploading...' : profile?.avatarUrl ? 'Change Photo' : 'Add Photo'}
-      </button>
-
-      {avatarError && (
-        <div style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.5rem' }}>
-          {avatarError}
-        </div>
-      )}
-    </div>
-  </div>
-</div>
 
         {/* Display Name Section */}
         <div style={{ ...baseStyles.card, marginBottom: '1.5rem' }}>
@@ -540,7 +574,7 @@ const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
             </div>
             <div style={{ flex: 1 }}>
               <h3 style={{ fontWeight: 500, color: '#1c1917', marginBottom: '0.75rem' }}>Display Name</h3>
-              
+
               <div style={{ display: 'flex', flexDirection: 'column' as const, gap: '1rem' }}>
                 <div>
                   <label style={{ display: 'block', fontWeight: 500, color: '#3f3f46', fontSize: '0.875rem', marginBottom: '0.25rem' }}>
@@ -557,7 +591,7 @@ const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
                     placeholder="First name"
                   />
                 </div>
-                
+
                 <div>
                   <label style={{ display: 'block', fontWeight: 500, color: '#3f3f46', fontSize: '0.875rem', marginBottom: '0.25rem' }}>
                     Last Name
@@ -570,11 +604,11 @@ const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
                     placeholder="Last name (optional)"
                   />
                 </div>
-                
+
                 {nameError && (
                   <div style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem' }}>{nameError}</div>
                 )}
-                
+
                 <button
                   onClick={handleSaveName}
                   disabled={!firstName.trim() || isSavingName}
@@ -588,7 +622,7 @@ const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
                 >
                   {isSavingName ? 'Saving...' : 'Update Display Name'}
                 </button>
-                
+
                 <div style={{ fontSize: '0.75rem', color: '#78716c', marginTop: '0.5rem' }}>
                   This name will be used across the platform. You can change it anytime.
                 </div>
@@ -613,9 +647,166 @@ const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
           </button>
         </div>
 
+        {/* About Section */}
+        <div style={{
+          marginBottom: '1.5rem',
+          padding: '1rem',
+          borderRadius: '0.75rem',
+          backgroundColor: '#fff',
+          border: '1px solid #e7e5e4',
+        }}>
+          <h3 style={{
+            fontSize: '1rem',
+            fontWeight: 600,
+            color: '#1c1917',
+            marginBottom: '0.5rem'
+          }}>
+            About You
+          </h3>
+
+          {isEditingAbout ? (
+            <div>
+              <textarea
+                value={aboutText}
+                onChange={(e) => setAboutText(e.target.value)}
+                rows={4}
+                style={{
+                  width: '100%',
+                  padding: '0.75rem',
+                  border: '1px solid #d6d3d1',
+                  borderRadius: '0.5rem',
+                  fontSize: '0.875rem',
+                  fontFamily: 'inherit',
+                  resize: 'vertical',
+                  boxSizing: 'border-box',
+                  outline: 'none',
+                  boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.05)',
+                  transition: 'border-color 0.2s, box-shadow 0.2s',
+                }}
+                placeholder="Share a bit about yourself... What brings you here? Who are you grieving? What helps you feel comforted?"
+                onFocus={(e) => e.target.style.borderColor = '#f59e0b'}
+                onBlur={(e) => e.target.style.borderColor = '#d6d3d1'}
+              />
+              <div style={{
+                display: 'flex',
+                gap: '0.5rem',
+                marginTop: '0.75rem',
+                justifyContent: 'flex-end'
+              }}>
+                <button
+                  onClick={() => {
+                    setAboutText(profile?.about || '');
+                    setIsEditingAbout(false);
+                  }}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    backgroundColor: 'transparent',
+                    color: '#4b5563',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '0.5rem',
+                    cursor: 'pointer',
+                    fontSize: '0.875rem',
+                    fontWeight: 500,
+                    transition: 'background-color 0.2s, color 0.2s'
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveAbout}
+                  disabled={isSubmitting}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    backgroundColor: isSubmitting ? '#d6d3d1' : '#f59e0b',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '0.5rem',
+                    cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                    fontSize: '0.875rem',
+                    fontWeight: 500,
+                    transition: 'background-color 0.2s',
+                    opacity: isSubmitting ? 0.8 : 1
+                  }}
+                >
+                  {isSubmitting ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div>
+              {profile?.about ? (
+                <div style={{
+                  position: 'relative',
+                  marginBottom: '0.75rem'
+                }}>
+                  <p style={{
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    margin: 0,
+                    lineHeight: 1.6,
+                    color: '#1c1917',
+                    overflow: 'hidden',
+                    display: '-webkit-box',
+                    WebkitBoxOrient: 'vertical',
+                    WebkitLineClamp: !isExpanded && profile.about.length > 120 ? 2 : 'unset',
+                    transition: 'all 0.3s ease'
+                  }}>
+                    {profile.about}
+                  </p>
+                  {profile.about.length > 120 && (
+                    <button
+                      onClick={() => setIsExpanded(!isExpanded)}
+                      style={{
+                        marginTop: '0.5rem',
+                        fontSize: '0.875rem',
+                        color: '#2563eb',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        textDecoration: 'underline',
+                        fontWeight: 500,
+                        padding: '0.25rem 0',
+                        transition: 'color 0.2s'
+                      }}
+                    >
+                      {isExpanded ? 'Show less' : 'Show more'}
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <p style={{
+                  color: '#9ca3af',
+                  fontStyle: 'italic',
+                  margin: 0,
+                  fontSize: '0.875rem'
+                }}>
+                  Nothing yet. You can share as much or as little as feels safe.
+                </p>
+              )}
+              <button
+                onClick={() => setIsEditingAbout(true)}
+                style={{
+                  marginTop: '0.5rem',
+                  fontSize: '0.875rem',
+                  color: '#2563eb',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                  fontWeight: 500,
+                  padding: '0.25rem 0',
+                  transition: 'color 0.2s'
+                }}
+              >
+                Edit
+              </button>
+            </div>
+          )}
+        </div>
+
         {/* 1:1 Support Toggle */}
         <div style={{ marginBottom: '1.5rem' }}>
-          <label 
+          <label
             style={{
               display: 'flex',
               gap: '0.75rem',
@@ -632,7 +823,7 @@ const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
                 {preferences.acceptsCalls ? 'Accepting support calls' : 'Paused for now'}
               </div>
               <div style={{ fontSize: '0.875rem', color: '#78716c', marginTop: '0.25rem' }}>
-                {preferences.acceptsCalls 
+                {preferences.acceptsCalls
                   ? 'You\'ll appear in matches for 1:1 support'
                   : 'You won\'t be matched for calls until you turn this back on'
                 }
@@ -653,7 +844,7 @@ const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
         {/* Video Calls Toggle */}
         <div style={{ marginBottom: '1.5rem' }}>
-          <label 
+          <label
             style={{
               display: 'flex',
               gap: '0.75rem',
@@ -719,7 +910,7 @@ const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
                 </div>
               </div>
             </label>
-            
+
             <div style={{
               padding: '0.75rem',
               backgroundColor: '#fef3c7',
@@ -877,12 +1068,12 @@ const CommunityPresence = ({ onlineCount }: { onlineCount: number }) => (
   </div>
 );
 
-const NewPostForm = ({ 
+const NewPostForm = ({
   profile,
   mediaFiles,
-  newPostText, 
-  mediaPreviews, 
-  isSubmitting, 
+  newPostText,
+  mediaPreviews,
+  isSubmitting,
   fileInputRef,
   setNewPostText,
   handleFileChange,
@@ -914,20 +1105,20 @@ const NewPostForm = ({
         border: '1px solid #fde68a',
       }}>
         {profile?.avatarUrl ? (
-        <div style={{ width: '100%', height: '100%', borderRadius: '9999px', overflow: 'hidden' }}>
-  <Image
-    src={profile.avatarUrl}
-    alt="Your avatar"
-    width={40}   // approximate logical size; actual rendering handled by CSS
-    height={40}
-    style={{
-      width: '100%',
-      height: '100%',
-      objectFit: 'cover',
-    }}
-    unoptimized // needed if avatars are dynamic/user-uploaded from Supabase
-  />
-</div>
+          <div style={{ width: '100%', height: '100%', borderRadius: '9999px', overflow: 'hidden' }}>
+            <Image
+              src={profile.avatarUrl}
+              alt="Your avatar"
+              width={40}   // approximate logical size; actual rendering handled by CSS
+              height={40}
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+              }}
+              unoptimized // needed if avatars are dynamic/user-uploaded from Supabase
+            />
+          </div>
         ) : (
           <div style={{ color: '#92400e', fontWeight: 500, fontSize: '0.875rem' }}>
             {(profile?.fullName || 'U').charAt(0).toUpperCase()}
@@ -954,7 +1145,7 @@ const NewPostForm = ({
           }}
           disabled={isSubmitting}
         />
-        
+
         {mediaPreviews.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: '0.5rem', marginTop: '0.75rem' }}>
             {mediaPreviews.map((url, i) => (
@@ -967,19 +1158,19 @@ const NewPostForm = ({
                 border: '1px solid #e7e5e4',
               }}>
                 <div style={{ width: '100%', height: '100%', overflow: 'hidden', borderRadius: '0.5rem' }}>
-  <Image
-    src={url}
-    alt={`Attachment ${i + 1}`}
-    width={80}
-    height={80}
-    style={{
-      width: '100%',
-      height: '100%',
-      objectFit: 'cover',
-    }}
-    unoptimized
-  />
-</div>
+                  <Image
+                    src={url}
+                    alt={`Attachment ${i + 1}`}
+                    width={80}
+                    height={80}
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                    }}
+                    unoptimized
+                  />
+                </div>
                 <button
                   onClick={() => removeMedia(i)}
                   style={{
@@ -1037,7 +1228,7 @@ const NewPostForm = ({
               {mediaFiles.length > 0 ? `Add more (${4 - mediaFiles.length} left)` : 'Add photo/video'}
             </button>
           </div>
-          
+
           <input
             type="file"
             ref={fileInputRef}
@@ -1046,7 +1237,7 @@ const NewPostForm = ({
             multiple
             style={{ display: 'none' }}
           />
-          
+
           <button
             onClick={handlePostSubmit}
             disabled={!newPostText.trim() || isSubmitting}
@@ -1108,7 +1299,7 @@ const PostsSection = ({ posts }: { posts: Post[] }) => (
         {posts.length} posts
       </span>
     </div>
-    
+
     {posts.length === 0 ? (
       <div style={{
         ...baseStyles.card,
@@ -1133,7 +1324,7 @@ const PostsSection = ({ posts }: { posts: Post[] }) => (
 );
 
 const PostItem = ({ post }: { post: Post }) => (
-  <div 
+  <div
     style={{
       ...baseStyles.card,
       transition: 'box-shadow 0.2s',
@@ -1155,19 +1346,19 @@ const PostItem = ({ post }: { post: Post }) => (
         }}>
           {post.user?.avatarUrl && !post.isAnonymous ? (
             <div style={{ width: '100%', height: '100%', borderRadius: '9999px', overflow: 'hidden' }}>
-  <Image
-    src={post.user.avatarUrl}
-    alt={post.user.fullName || 'User'}
-    width={40}
-    height={40}
-    style={{
-      width: '100%',
-      height: '100%',
-      objectFit: 'cover',
-    }}
-    unoptimized
-  />
-</div>
+              <Image
+                src={post.user.avatarUrl}
+                alt={post.user.fullName || 'User'}
+                width={40}
+                height={40}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                }}
+                unoptimized
+              />
+            </div>
           ) : (
             <div style={{ color: '#92400e', fontWeight: 500 }}>
               {post.isAnonymous ? 'A' : post.user?.fullName?.charAt(0) || 'C'}
@@ -1199,8 +1390,8 @@ const PostItem = ({ post }: { post: Post }) => (
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: '0.25rem', marginTop: '0.25rem' }}>
             {post.griefTypes.map((type, i) => (
-              <span 
-                key={i} 
+              <span
+                key={i}
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -1220,7 +1411,7 @@ const PostItem = ({ post }: { post: Post }) => (
           </div>
         </div>
       </div>
-      
+
       <p style={{
         color: '#1c1917',
         whiteSpace: 'pre-wrap',
@@ -1228,7 +1419,7 @@ const PostItem = ({ post }: { post: Post }) => (
       }}>
         {post.text}
       </p>
-      
+
       {post.mediaUrls && post.mediaUrls.length > 0 && (
         <div style={{
           marginTop: '0.75rem',
@@ -1237,8 +1428,8 @@ const PostItem = ({ post }: { post: Post }) => (
           gap: '0.5rem',
         }}>
           {post.mediaUrls.map((url, i) => (
-            <div 
-              key={i} 
+            <div
+              key={i}
               style={{
                 aspectRatio: '1',
                 borderRadius: '0.5rem',
@@ -1247,26 +1438,26 @@ const PostItem = ({ post }: { post: Post }) => (
                 border: '1px solid #e7e5e4',
               }}
             >
-             <div style={{ width: '100%', height: '100%', overflow: 'hidden', borderRadius: '0.5rem' }}>
-  <Image
-    src={url}
-    alt={`Attachment ${i + 1}`}
-    width={80}
-    height={80}
-    style={{
-      width: '100%',
-      height: '100%',
-      objectFit: 'cover',
-    }}
-    unoptimized
-  />
-</div>
+              <div style={{ width: '100%', height: '100%', overflow: 'hidden', borderRadius: '0.5rem' }}>
+                <Image
+                  src={url}
+                  alt={`Attachment ${i + 1}`}
+                  width={80}
+                  height={80}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                  }}
+                  unoptimized
+                />
+              </div>
             </div>
           ))}
         </div>
       )}
     </div>
-    
+
     <div style={{
       display: 'flex',
       justifyContent: 'space-between',
@@ -1295,9 +1486,9 @@ const PostItem = ({ post }: { post: Post }) => (
   </div>
 );
 
-const SupportOptions = ({ 
-  onConnectClick, 
-  onCommunitiesClick 
+const SupportOptions = ({
+  onConnectClick,
+  onCommunitiesClick
 }: {
   onConnectClick: () => void;
   onCommunitiesClick: () => void;

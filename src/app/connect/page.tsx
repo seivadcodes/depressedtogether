@@ -40,7 +40,7 @@ const styles = {
   container: {
     minHeight: '100vh',
     background: 'linear-gradient(to bottom, #fffbeb, #f4f4f5)',
-    padding: '1rem',
+    padding: '3rem 1rem 1.5rem', 
   },
   maxWidth: {
     maxWidth: '56rem',
@@ -145,6 +145,11 @@ export default function ConnectPage() {
   const [isPostingGroup, setIsPostingGroup] = useState(false);
   const isRedirectingRef = useRef(false);
 
+  const [userPreferences, setUserPreferences] = useState({
+  acceptsCalls: true,
+  acceptsVideoCalls: false,
+});
+
   const fetchActiveOneOnOne = useCallback(async (userId: string) => {
     try {
       const { data, error } = await supabase
@@ -212,58 +217,64 @@ export default function ConnectPage() {
   }, [router, supabase, user]);
 
   const fetchAvailableOneOnOne = useCallback(async (currentUserId: string) => {
-    try {
-      const { data: requests, error: reqError } = await supabase
-        .from('quick_connect_requests')
-        .select('id, created_at, user_id, status, expires_at')
-        .eq('status', 'available')
-        .neq('user_id', currentUserId)
-        .gt('expires_at', new Date().toISOString())
-        .order('created_at', { ascending: true });
-      if (reqError) throw reqError;
-      const userIds = requests.map((r) => r.user_id);
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, full_name, avatar_url')
-        .in('id', userIds);
-      const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
-      const formatted = requests.map((req) => ({
-        ...req,
-        type: 'one-on-one' as const,
-        user: profileMap.get(req.user_id) || { id: req.user_id, full_name: 'Anonymous', avatar_url: null },
-      }));
-      setAvailableOneOnOne(formatted);
-    } catch (err) {
-      console.error('Error fetching available 1:1:', err);
-    }
-  }, [supabase]);
+  try {
+    const { data: requests, error: reqError } = await supabase
+      .from('quick_connect_requests')
+      .select('id, created_at, user_id, status, expires_at')
+      .eq('status', 'available')
+      .neq('user_id', currentUserId)
+      .gt('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: true });
+    if (reqError) throw reqError;
+
+    const userIds = requests.map((r) => r.user_id);
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, full_name, avatar_url')
+      .in('id', userIds);
+
+    const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
+    const formatted = requests.map((req) => ({
+      ...req,
+      type: 'one-on-one' as const,
+      user: profileMap.get(req.user_id) || { id: req.user_id, full_name: 'Anonymous', avatar_url: null },
+    }));
+
+    setAvailableOneOnOne(formatted);
+  } catch (err) {
+    console.error('Error fetching available 1:1:', err);
+  }
+}, [supabase]);
 
   const fetchAvailableGroups = useCallback(async (currentUserId: string) => {
-    try {
-      const { data: requests, error: reqError } = await supabase
-        .from('quick_group_requests')
-        .select('id, created_at, user_id, status, expires_at')
-        .eq('status', 'available')
-        .neq('user_id', currentUserId)
-        .gt('expires_at', new Date().toISOString())
-        .order('created_at', { ascending: true });
-      if (reqError) throw reqError;
-      const userIds = requests.map((r) => r.user_id);
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, full_name, avatar_url')
-        .in('id', userIds);
-      const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
-      const formatted = requests.map((req) => ({
-        ...req,
-        type: 'group' as const,
-        user: profileMap.get(req.user_id) || { id: req.user_id, full_name: 'Anonymous', avatar_url: null },
-      }));
-      setAvailableGroups(formatted);
-    } catch (err) {
-      console.error('Error fetching available groups:', err);
-    }
-  }, [supabase]);
+  try {
+    const { data: requests, error: reqError } = await supabase
+      .from('quick_group_requests')
+      .select('id, created_at, user_id, status, expires_at')
+      .eq('status', 'available')
+      .neq('user_id', currentUserId)
+      .gt('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: true });
+    if (reqError) throw reqError;
+
+    const userIds = requests.map((r) => r.user_id);
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, full_name, avatar_url')
+      .in('id', userIds);
+
+    const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
+    const formatted = requests.map((req) => ({
+      ...req,
+      type: 'group' as const,
+      user: profileMap.get(req.user_id) || { id: req.user_id, full_name: 'Anonymous', avatar_url: null },
+    }));
+
+    setAvailableGroups(formatted);
+  } catch (err) {
+    console.error('Error fetching available groups:', err);
+  }
+}, [supabase]);
 
   useEffect(() => {
     let isMounted = true;
@@ -298,11 +309,23 @@ export default function ConnectPage() {
           router.push('/auth');
           return;
         }
-        const { data: profile, error: profileError } = await supabase
-          .from('profiles')
-          .select('id, full_name, avatar_url')
-          .eq('id', session.user.id)
-          .single();
+
+       
+        // Update the user profile fetch to include preferences
+const { data: profile, error: profileError } = await supabase
+  .from('profiles')
+  .select('id, full_name, avatar_url, accepts_calls, accepts_video_calls')
+  .eq('id', session.user.id)
+  .single();
+
+// Store these in state
+if (profile) {
+  setUser(profile);
+  setUserPreferences({
+    acceptsCalls: profile.accepts_calls ?? true,
+    acceptsVideoCalls: profile.accepts_video_calls ?? false
+  });
+}
         if (profileError) throw profileError;
         if (isMounted) setUser(profile);
         startPolling(session.user.id);
@@ -544,15 +567,21 @@ export default function ConnectPage() {
 
   if (isLoading) {
     return (
-      <div style={{ ...styles.container, display: 'flex', justifyContent: 'center', padding: '2rem' }}>
+      <div style={{ ...styles.container, paddingTop: '5rem', display: 'flex', justifyContent: 'center', padding: '2rem' }}>
         <p style={{ color: '#78716c' }}>Connecting...</p>
       </div>
     );
   }
 
-  const allRequests = [...availableOneOnOne, ...availableGroups].sort(
-    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-  );
+  // Filter available requests based on CURRENT USER'S preferences
+const filteredOneOnOne = userPreferences.acceptsCalls ? availableOneOnOne : [];
+// Optional: apply similar logic to groups if you have a pref like acceptsGroupCalls
+// For now, we'll assume group calls are always visible unless you add a pref
+const filteredGroups = availableGroups;
+
+const allRequests = [...filteredOneOnOne, ...filteredGroups].sort(
+  (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+);
 
   return (
     <div style={styles.container}>
@@ -578,9 +607,9 @@ export default function ConnectPage() {
         <div style={styles.header}>
           <div>
             <h1 style={styles.title}>Connect Now</h1>
-           <p style={styles.subtitle}>
-  Post a one-on-one or group request when you need to talk — or join someone else&#39;s.
-</p>
+            <p style={styles.subtitle}>
+              Post a one-on-one or group request when you need to talk — or join someone else&#39;s.
+            </p>
           </div>
         </div>
 
@@ -647,8 +676,8 @@ export default function ConnectPage() {
               Need to Talk 1:1?
             </h2>
             <p style={{ color: '#78716c', marginBottom: '1.5rem', maxWidth: '32rem', margin: '0 auto' }}>
-  Post a request to connect with someone who&#39;s available to listen right now.
-</p>
+              Post a request to connect with someone who&#39;s available to listen right now.
+            </p>
             <button
               onClick={postOneOnOne}
               disabled={isPostingOneOnOne || !!activeGroup || isRedirectingRef.current}
@@ -726,9 +755,9 @@ export default function ConnectPage() {
             <h2 style={{ fontSize: '1.5rem', fontWeight: '700', color: '#1c1917', marginBottom: '0.75rem' }}>
               Start a Group Call?
             </h2>
-           <p style={{ color: '#78716c', marginBottom: '1.5rem', maxWidth: '32rem', margin: '0 auto' }}>
-  Invite others to join a supportive group conversation. Anyone can join while it&#39;s active.
-</p>
+            <p style={{ color: '#78716c', marginBottom: '1.5rem', maxWidth: '32rem', margin: '0 auto' }}>
+              Invite others to join a supportive group conversation. Anyone can join while it&#39;s active.
+            </p>
             <button
               onClick={postGroup}
               disabled={isPostingGroup || !!activeOneOnOne || isRedirectingRef.current}
@@ -788,15 +817,15 @@ export default function ConnectPage() {
                     <div style={{ display: 'flex', alignItems: 'center', marginLeft: '1rem' }}>
                       <button
                         onClick={(e) => {
-  e.stopPropagation();
-  if (!isRedirectingRef.current) {
-    if (request.type === 'group') {
-      acceptGroup(request.id);
-    } else {
-      acceptOneOnOne(request.id);
-    }
-  }
-}}
+                          e.stopPropagation();
+                          if (!isRedirectingRef.current) {
+                            if (request.type === 'group') {
+                              acceptGroup(request.id);
+                            } else {
+                              acceptOneOnOne(request.id);
+                            }
+                          }
+                        }}
                         style={{
                           background: request.type === 'group' ? '#3b82f6' : '#10b981',
                           color: 'white',
