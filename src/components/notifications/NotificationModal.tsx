@@ -4,19 +4,96 @@ import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 
-// Define the expected shape of a notification record from Supabase
-interface Notification {
+// Type for the enriched notification shown in UI
+export interface Notification {
   id: string;
   user_id: string;
+  sender_id: string | null;
   message: string;
-  link?: string | null;
+  link: string | null;
   read: boolean;
-  created_at: string; // ISO string from Supabase
+  created_at: string;
+  type: string;
+  sender_name: string;
+}
+
+// Raw type matching Supabase query shape
+interface RawNotification {
+  id: string;
+  user_id: string;
+  sender_id: string | null;
+  message: string | null;
+  link: string | null;
+  read: boolean;
+  created_at: string;
+  type: string;
+  sender: {
+    full_name: string | null;
+  } | {
+    full_name: string | null;
+  }[] | null;
 }
 
 type Props = {
   isOpen: boolean;
   onClose: () => void;
+};
+
+const formatTimeAgo = (dateString: string): string => {
+  const now = new Date();
+  const past = new Date(dateString);
+  const diffMs = now.getTime() - past.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+
+  if (diffMins < 1) return 'Just now';
+  if (diffMins === 1) return '1 minute ago';
+  if (diffMins < 60) return `${diffMins} minutes ago`;
+  if (diffHours === 1) return '1 hour ago';
+  if (diffHours < 24) return `${diffHours} hours ago`;
+  return past.toLocaleDateString();
+};
+
+const renderNotificationMessage = (n: Notification): React.ReactNode => {
+  switch (n.type) {
+    case 'one_on_one_request':
+    case 'group_request':
+      return (
+        <>
+          <strong>{n.sender_name}</strong> needs your support
+          {n.message && (
+            <>
+              : “<span style={{ color: n.read ? '#64748b' : '#1e293b' }}>{n.message}</span>”
+            </>
+          )}
+        </>
+      );
+
+    case 'community_post':
+  // message already contains the complete sentence (e.g., "Dansx shared a new post in Pet loss")
+  return n.message || 'A new post was shared in the community';
+    case 'comment':
+      return (
+        <>
+          <strong>{n.sender_name}</strong> commented on your post
+          {n.message && (
+            <>
+              : “<span style={{ color: n.read ? '#64748b' : '#1e293b' }}>{n.message}</span>”
+            </>
+          )}
+        </>
+      );
+
+    case 'like':
+      return (
+        <>
+          <strong>{n.sender_name}</strong> liked your post
+        </>
+      );
+
+    default:
+      return n.message || 'You have a new notification';
+  }
 };
 
 export default function NotificationModal({ isOpen, onClose }: Props) {
@@ -31,26 +108,74 @@ export default function NotificationModal({ isOpen, onClose }: Props) {
     const fetchNotifications = async () => {
       setLoading(true);
       try {
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError || !sessionData?.session) {
-          console.error('Session error:', sessionError);
+        const { data, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError || !data?.session) {
+          console.error('❌ Session error in NotificationModal:', sessionError);
           onClose();
           return;
         }
 
-        const userId = sessionData.session.user.id;
+        const userId = data.session.user.id;
+        console.log('🔍 Fetching notifications for user:', userId);
 
-        const { data, error } = await supabase
+        const { data: notificationsData, error } = await supabase
           .from('notifications')
-          .select('id, user_id, message, link, read, created_at')
+          .select(`
+            id,
+            user_id,
+            sender_id,
+            message,
+            link,
+            read,
+            created_at,
+            type,
+            sender:profiles!notifications_sender_id_fkey(full_name)
+          `)
           .eq('user_id', userId)
           .order('created_at', { ascending: false });
 
-        if (error) throw error;
+        if (error) {
+          console.error('❌ Supabase error:', error);
+          throw error;
+        }
 
-        setNotifications(data || []);
+        // Safely cast to known shape
+        const typedData = (notificationsData || []) as unknown as RawNotification[];
+
+        const enriched: Notification[] = typedData.map((item) => {
+          let senderName = 'Someone';
+
+          if (item.sender) {
+            let profile: { full_name: string | null } | undefined;
+
+            if (Array.isArray(item.sender)) {
+              profile = item.sender[0];
+            } else {
+              profile = item.sender;
+            }
+
+            if (profile?.full_name) {
+              // Extract first name only
+              senderName = profile.full_name.split(' ')[0].trim() || 'Someone';
+            }
+          }
+
+          return {
+            id: item.id,
+            user_id: item.user_id,
+            sender_id: item.sender_id,
+            message: item.message || '',
+            link: item.link,
+            read: item.read,
+            created_at: item.created_at,
+            type: item.type,
+            sender_name: senderName,
+          };
+        });
+
+        setNotifications(enriched);
       } catch (err) {
-        console.error('Failed to load notifications:', err);
+        console.error('🔥 Failed to load notifications:', err);
       } finally {
         setLoading(false);
       }
@@ -64,6 +189,7 @@ export default function NotificationModal({ isOpen, onClose }: Props) {
     setNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, read: true } : n))
     );
+    window.dispatchEvent(new CustomEvent('unreadUpdateRequest'));
   };
 
   const handleNotificationClick = (n: Notification) => {
@@ -104,7 +230,6 @@ export default function NotificationModal({ isOpen, onClose }: Props) {
           flexDirection: 'column',
         }}
       >
-        {/* Header */}
         <div
           style={{
             padding: '16px 20px',
@@ -132,7 +257,6 @@ export default function NotificationModal({ isOpen, onClose }: Props) {
           </button>
         </div>
 
-        {/* Body */}
         <div style={{ padding: '12px 0', overflowY: 'auto', flex: 1 }}>
           {loading ? (
             <div style={{ textAlign: 'center', padding: '20px', color: '#64748b' }}>
@@ -156,18 +280,11 @@ export default function NotificationModal({ isOpen, onClose }: Props) {
                     transition: 'background-color 0.2s',
                   }}
                 >
-                  <p
-                    style={{
-                      margin: 0,
-                      fontSize: '15px',
-                      color: n.read ? '#64748b' : '#1e293b',
-                      fontWeight: n.read ? 'normal' : '500',
-                    }}
-                  >
-                    {n.message}
+                  <p style={{ margin: 0, fontSize: '15px', fontWeight: n.read ? 'normal' : '500' }}>
+                    {renderNotificationMessage(n)}
                   </p>
                   <small style={{ color: '#94a3b8', fontSize: '12px' }}>
-                    {new Date(n.created_at).toLocaleString()}
+                    {formatTimeAgo(n.created_at)}
                   </small>
                 </li>
               ))}

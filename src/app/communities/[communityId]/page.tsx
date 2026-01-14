@@ -283,8 +283,8 @@ export default function CommunityDetailPage() {
   const [addingReply, setAddingReply] = useState<Record<string, boolean>>({});
   const [deletingReplyId, setDeletingReplyId] = useState<string | null>(null);
   const [showAllComments, setShowAllComments] = useState<Record<string, boolean>>({});
-const [isKebabOpen, setIsKebabOpen] = useState(false);
-const kebabMenuRef = useRef<HTMLDivElement>(null);
+  const [isKebabOpen, setIsKebabOpen] = useState(false);
+  const kebabMenuRef = useRef<HTMLDivElement>(null);
   const formatRecentActivity = (dateString: string): string => {
     const now = new Date();
     const created = new Date(dateString);
@@ -328,21 +328,21 @@ const kebabMenuRef = useRef<HTMLDivElement>(null);
   }, []); // 👈 empty dependency array — it never changes
 
   // Close kebab menu when clicking outside
-useEffect(() => {
-  const handleClickOutside = (event: MouseEvent) => {
-    if (kebabMenuRef.current && !kebabMenuRef.current.contains(event.target as Node)) {
-      setIsKebabOpen(false);
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (kebabMenuRef.current && !kebabMenuRef.current.contains(event.target as Node)) {
+        setIsKebabOpen(false);
+      }
+    };
+
+    if (isKebabOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
     }
-  };
 
-  if (isKebabOpen) {
-    document.addEventListener('mousedown', handleClickOutside);
-  }
-
-  return () => {
-    document.removeEventListener('mousedown', handleClickOutside);
-  };
-}, [isKebabOpen]);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isKebabOpen]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -1497,7 +1497,7 @@ useEffect(() => {
               alt={comment.username}
               width={32}
               height={32}
-              style={{ width: '100%', height: '100%', borderRadius: borderRadius.full, objectFit: 'cover' }}
+              style={{ borderRadius: borderRadius.full, objectFit: 'cover' }}
             />
           ) : (
             comment.username[0]?.toUpperCase() || 'U'
@@ -1668,6 +1668,7 @@ useEffect(() => {
           }
           alt={community.name}
           fill
+          sizes="100vw"
           style={{ objectFit: 'cover' }}
           onError={(e) => {
             (e.target as HTMLImageElement).src = `https://via.placeholder.com/1200x300/fcd34d-f97316?text=${encodeURIComponent(
@@ -1722,71 +1723,71 @@ useEffect(() => {
 
               {/* Three-dot menu (visible only to members) */}
               {user && isMember && (
-  <div
-    ref={kebabMenuRef}
-    style={{ position: 'absolute', top: spacing.sm, right: spacing.sm, zIndex: 1 }}
-  >
-    <button
-      onClick={(e) => {
-        e.stopPropagation();
-        setIsKebabOpen((prev) => !prev);
-      }}
-      style={{
-        background: 'transparent',
-        border: 'none',
-        cursor: 'pointer',
-        padding: spacing.xs,
-        borderRadius: borderRadius.sm,
-        color: baseColors.text.muted,
-      }}
-      aria-label="Community options"
-    >
-      <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>⋯</span>
-    </button>
+                <div
+                  ref={kebabMenuRef}
+                  style={{ position: 'absolute', top: spacing.sm, right: spacing.sm, zIndex: 1 }}
+                >
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsKebabOpen((prev) => !prev);
+                    }}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: spacing.xs,
+                      borderRadius: borderRadius.sm,
+                      color: baseColors.text.muted,
+                    }}
+                    aria-label="Community options"
+                  >
+                    <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>⋯</span>
+                  </button>
 
-    {isKebabOpen && (
-      <div
-        style={{
-          position: 'absolute',
-          top: '100%',
-          right: 0,
-          marginTop: spacing.xs,
-          backgroundColor: baseColors.surface,
-          border: `1px solid ${baseColors.border}`,
-          borderRadius: borderRadius.md,
-          boxShadow:
-            '0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06)',
-          minWidth: '120px',
-          zIndex: 10,
-        }}
-      >
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            handleMembership();
-            setIsKebabOpen(false);
-          }}
-          style={{
-            width: '100%',
-            textAlign: 'left',
-            padding: `${spacing.sm} ${spacing.md}`,
-            background: 'none',
-            border: 'none',
-            color: '#ef4444',
-            cursor: 'pointer',
-            fontSize: '0.875rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: spacing.sm,
-          }}
-        >
-          <LogOut size={16} />
-          Leave Community
-        </button>
-      </div>
-    )}
-  </div>
-)}
+                  {isKebabOpen && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: '100%',
+                        right: 0,
+                        marginTop: spacing.xs,
+                        backgroundColor: baseColors.surface,
+                        border: `1px solid ${baseColors.border}`,
+                        borderRadius: borderRadius.md,
+                        boxShadow:
+                          '0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06)',
+                        minWidth: '120px',
+                        zIndex: 10,
+                      }}
+                    >
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleMembership();
+                          setIsKebabOpen(false);
+                        }}
+                        style={{
+                          width: '100%',
+                          textAlign: 'left',
+                          padding: `${spacing.sm} ${spacing.md}`,
+                          background: 'none',
+                          border: 'none',
+                          color: '#ef4444',
+                          cursor: 'pointer',
+                          fontSize: '0.875rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: spacing.sm,
+                        }}
+                      >
+                        <LogOut size={16} />
+                        Leave Community
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: spacing.lg }}>
                 {/* Banner Thumbnail or Fallback Icon */}
@@ -1909,7 +1910,7 @@ useEffect(() => {
                         alt={authUsername}
                         width={40}
                         height={40}
-                        style={{ width: '100%', height: '100%', borderRadius: borderRadius.full, objectFit: 'cover' }}
+                        style={{ borderRadius: borderRadius.full, objectFit: 'cover' }}
                       />
                     ) : (
                       authUsername[0]?.toUpperCase() || 'U'
@@ -2082,7 +2083,7 @@ useEffect(() => {
                           alt={post.username}
                           width={40}
                           height={40}
-                          style={{ width: '100%', height: '100%', borderRadius: borderRadius.full, objectFit: 'cover' }}
+                          style={{ borderRadius: borderRadius.full, objectFit: 'cover' }}
                         />
                       ) : (
                         post.username[0]?.toUpperCase() || 'U'
@@ -2145,8 +2146,6 @@ useEffect(() => {
                             width={800}
                             height={400}
                             style={{
-                              width: '100%',
-                              height: 'auto',
                               maxHeight: '400px',
                               objectFit: 'contain', // or 'cover' if you prefer cropping
                               borderRadius: borderRadius.md,
@@ -2293,7 +2292,7 @@ useEffect(() => {
                                 alt={authUsername}
                                 width={32}
                                 height={32}
-                                style={{ width: '100%', height: '100%', borderRadius: borderRadius.full, objectFit: 'cover' }}
+                                style={{ borderRadius: borderRadius.full, objectFit: 'cover' }}
                               />
                             ) : (
                               authUsername[0]?.toUpperCase() || 'U'
@@ -2406,7 +2405,7 @@ useEffect(() => {
                             alt={member.username}
                             width={36}
                             height={36}
-                            style={{ width: '100%', height: '100%', borderRadius: borderRadius.full, objectFit: 'cover' }}
+                            style={{ borderRadius: borderRadius.full, objectFit: 'cover' }}
                           />
                         ) : (
                           member.username[0]?.toUpperCase() || 'U'
@@ -2596,6 +2595,7 @@ useEffect(() => {
                       src={bannerPreview}
                       alt="Banner preview"
                       fill
+                      sizes="(max-width: 768px) 100vw, 500px"
                       style={{ objectFit: 'contain' }}
                     />
                     <div

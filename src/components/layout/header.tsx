@@ -64,6 +64,8 @@ export default function Header() {
     setUnreadMessages(0);
     setUnreadNotifications(0);
     setIsUnreadLoading(false);
+
+
     return;
   }
 
@@ -86,7 +88,7 @@ export default function Header() {
   .select('*', { count: 'exact', head: true })
   .eq('user_id', user.id)
   .eq('read', false)
-  .gt('expires_at', new Date().toISOString());
+ .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString())
     if (!notifError) {
       setUnreadNotifications(count || 0);
     } else {
