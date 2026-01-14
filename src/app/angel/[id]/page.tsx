@@ -4,10 +4,9 @@ import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import AddMemoryModal from '@/components/angels/AddMemoryModal';
-import HeartsAndComments from '@/components/angels/HeartsAndComments';
-import MemoryActions from '@/components/angels/MemoryActions';
+import HeartsAndComments from '@/components/angels/HeartsAndComments'; // Updated import path
 
 const griefLabels = {
   parent: 'Loss of a Parent',
@@ -46,7 +45,6 @@ interface AngelMemory {
 
 export default function AngelDetailPage() {
   const params = useParams<{ id: string }>();
-  const router = useRouter();
   const [angel, setAngel] = useState<Angel | null>(null);
   const [memories, setMemories] = useState<AngelMemory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -97,15 +95,22 @@ export default function AngelDetailPage() {
     };
 
     fetchAngelAndMemories();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id]);
 
+/**
+ * 获取并更新记忆列表的异步函数
+ * 该函数会从数据库中查询指定angel的记忆记录
+ * 并更新组件的状态
+ */
+  // 如果angel不存在，则直接返回
   const refetchMemories = async () => {
     if (!angel) return;
+  // 创建Supabase客户端实例
     const supabase = createClient();
+  // 从数据库查询angel的记忆记录
     const { data } = await supabase
       .from('angel_memories')
-      .select('id, photo_url, caption')
+      .select('id, photo_url, caption') // 选择需要查询的字段
       .eq('angel_id', angel.id)
       .order('created_at', { ascending: false });
     setMemories(data || []);
@@ -153,6 +158,7 @@ export default function AngelDetailPage() {
               padding: '1.75rem',
               boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
               border: '1px solid #e2e8f0',
+              position: 'relative',
             }}
           >
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.25rem' }}>
@@ -215,15 +221,18 @@ export default function AngelDetailPage() {
               </div>
             )}
 
-            {/* 👇 HEARTS & COMMENTS BUTTONS ADDED HERE */}
+            {/* Unified Hearts & Comments */}
             {!angel.is_private && (
-              <HeartsAndComments angelId={angel.id} profileId={angel.profile_id} />
-            )}
-
-            {angel.allow_comments && !angel.is_private && (
-              <div style={{ marginTop: '1rem', textAlign: 'center', fontSize: '0.95rem', color: '#94a3b8' }}>
-                💬 Others may leave kind words in memory of {angel.name}.
-              </div>
+              <HeartsAndComments
+                itemId={angel.id}
+                itemType="angel"
+                allowComments={angel.allow_comments}
+                styleOverrides={{ 
+                  marginTop: '1.5rem',
+                  padding: '0.5rem',
+                  borderRadius: '8px'
+                }}
+              />
             )}
           </div>
         </div>
@@ -259,52 +268,68 @@ export default function AngelDetailPage() {
               <h3 style={{ margin: '0 0 1rem', fontSize: '1.25rem', color: '#1e293b' }}>
                 Shared Memories
               </h3>
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
-                  gap: '0.75rem',
-                }}
-              >
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                 {memories.map((memory) => (
-  <div key={memory.id} style={{ position: 'relative' }}>
-    <Image
-      src={memory.photo_url}
-      alt={`Memory for ${angel.name}`}
-      width={100}
-      height={100}
-      style={{
-        borderRadius: '8px',
-        objectFit: 'cover',
-        width: '100%',
-        aspectRatio: '1',
-      }}
-    />
-    {memory.caption && (
-      <div
-        style={{
-          position: 'absolute',
-          bottom: '28px', // Leave space for actions
-          left: '0',
-          right: '0',
-          background: 'rgba(0,0,0,0.6)',
-          color: 'white',
-          fontSize: '0.7rem',
-          padding: '2px 4px',
-          borderBottomLeftRadius: '8px',
-          borderBottomRightRadius: '8px',
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-        }}
-      >
-        {memory.caption}
-      </div>
-    )}
-    {/* 👇 Actions on each memory */}
-    <MemoryActions memoryId={memory.id} angelId={angel.id} />
-  </div>
-))}
+                  <div
+                    key={memory.id}
+                    style={{
+                      background: '#f9fafb',
+                      borderRadius: '10px',
+                      padding: '0.75rem',
+                      border: '1px solid #e2e8f0',
+                      maxWidth: '300px',
+                    }}
+                  >
+                    <div style={{ position: 'relative', marginBottom: '0.5rem' }}>
+                      <Image
+                        src={memory.photo_url}
+                        alt={`Memory for ${angel.name}`}
+                        width={280}
+                        height={280}
+                        style={{
+                          borderRadius: '8px',
+                          objectFit: 'cover',
+                          width: '100%',
+                          aspectRatio: '1',
+                        }}
+                      />
+                      {memory.caption && (
+                        <div
+                          style={{
+                            position: 'absolute',
+                            bottom: '0',
+                            left: '0',
+                            right: '0',
+                            background: 'rgba(0,0,0,0.6)',
+                            color: 'white',
+                            fontSize: '0.8rem',
+                            padding: '4px 8px',
+                            borderBottomLeftRadius: '8px',
+                            borderBottomRightRadius: '8px',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }}
+                        >
+                          {memory.caption}
+                        </div>
+                      )}
+                    </div>
+                    {/* Memory-specific Hearts & Comments */}
+                    <HeartsAndComments
+                      itemId={memory.id}
+                      itemType="memory"
+                      styleOverrides={{ 
+                        marginTop: '0.5rem',
+                        marginLeft: '-0.75rem',
+                        marginRight: '-0.75rem',
+                        marginBottom: '-0.75rem',
+                        borderBottomLeftRadius: '8px',
+                        borderBottomRightRadius: '8px'
+                      }}
+                    />
+                  </div>
+                ))}
               </div>
             </div>
           ) : (

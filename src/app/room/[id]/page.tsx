@@ -811,3 +811,4 @@ function ParticipantItem({ participant, isHost }: { participant: Participant; is
     </div>
   );
 }
+

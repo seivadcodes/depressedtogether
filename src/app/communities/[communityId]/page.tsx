@@ -24,6 +24,8 @@ import {
   ChevronDown,
   ChevronUp,
   CornerDownLeft,
+  Edit,
+  Flag
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import * as Hearts from '@/lib/comments-hearts/heartsLogic';
@@ -273,7 +275,13 @@ export default function CommunityDetailPage() {
   const [likeLoading, setLikeLoading] = useState<Record<string, boolean>>({});
   const [commentLoading, setCommentLoading] = useState<Record<string, boolean>>({});
   const [addingComment, setAddingComment] = useState<Record<string, boolean>>({});
-
+  const [openCommentMenu, setOpenCommentMenu] = useState<string | null>(null);
+  const commentMenuRef = useRef<HTMLDivElement>(null);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editedCommentContent, setEditedCommentContent] = useState<string>('');
+  const [updatingCommentId, setUpdatingCommentId] = useState<string | null>(null);
+  const [reportingCommentId, setReportingCommentId] = useState<string | null>(null);
+  const [reportReason, setReportReason] = useState<string>('');
   // Only show the latest comment by default
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
@@ -326,6 +334,23 @@ export default function CommunityDetailPage() {
     const now = new Date();
     return now.getTime() - lastOnlineDate.getTime() < 5 * 60 * 1000;
   }, []); // 👈 empty dependency array — it never changes
+
+  // Close comment menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (commentMenuRef.current && !commentMenuRef.current.contains(event.target as Node)) {
+        setOpenCommentMenu(null);
+      }
+    };
+
+    if (openCommentMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [openCommentMenu]);
 
   // Close kebab menu when clicking outside
   useEffect(() => {
@@ -634,7 +659,76 @@ export default function CommunityDetailPage() {
     const interval = setInterval(updateLastOnline, 45_000); // every 45s
     return () => clearInterval(interval);
   }, [user, supabase]);
+  const editComment = async (commentId: string, newContent: string, postId: string) => {
+    if (!user || !newContent.trim()) return;
 
+    setUpdatingCommentId(commentId);
+
+    try {
+      const { error } = await supabase
+        .from('community_post_comments')
+        .update({ content: newContent.trim() })
+        .eq('id', commentId)
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      // Update local state
+      setComments(prev => {
+        const updateCommentContent = (comments: CommentNode[]): CommentNode[] => {
+          return comments.map(comment => {
+            if (comment.id === commentId) {
+              return { ...comment, content: newContent.trim() };
+            }
+            if (comment.replies && comment.replies.length > 0) {
+              return { ...comment, replies: updateCommentContent(comment.replies) };
+            }
+            return comment;
+          });
+        };
+
+        return {
+          ...prev,
+          [postId]: prev[postId] ? updateCommentContent(prev[postId]) : []
+        };
+      });
+
+      setEditingCommentId(null);
+      setEditedCommentContent('');
+      toast.success('Comment updated successfully');
+    } catch (error) {
+      console.error('Error updating comment:', error);
+      toast.error('Failed to update comment');
+    } finally {
+      setUpdatingCommentId(null);
+    }
+  };
+
+  const reportComment = async (commentId: string, reason: string) => {
+  if (!user || !reason.trim()) return;
+
+  try {
+    const { error } = await supabase
+      .from('reports')
+      .insert({
+        target_type: 'comment',
+        target_id: commentId,
+        reporter_id: user.id,
+        reason: reason.trim(),
+        created_at: new Date().toISOString(),
+        status: 'pending',
+      });
+
+    if (error) throw error;
+
+    toast.success('Comment reported successfully');
+    setReportingCommentId(null);
+    setReportReason('');
+  } catch (error) {
+    console.error('Error reporting comment:', error);
+    toast.error('Failed to report comment');
+  }
+};
   // In your page component, add this once:
   useEffect(() => {
     // Only run on client
@@ -1417,13 +1511,13 @@ export default function CommunityDetailPage() {
           }}
         >
           {comment.avatar_url ? (
-           <Image
-  src={comment.avatar_url}
-  alt={comment.username}
-  fill
-  sizes="(max-width: 768px) 48px, 48px" // Add this line
-  style={{ borderRadius: borderRadius.full, objectFit: 'cover' }}
-/>
+            <Image
+              src={comment.avatar_url}
+              alt={comment.username}
+              fill
+              sizes="(max-width: 768px) 48px, 48px" // Add this line
+              style={{ borderRadius: borderRadius.full, objectFit: 'cover' }}
+            />
           ) : (
             comment.username[0]?.toUpperCase() || 'U'
           )}
@@ -1494,12 +1588,12 @@ export default function CommunityDetailPage() {
         >
           {comment.avatar_url ? (
             <Image
-  src={comment.avatar_url}
-  alt={comment.username}
-  fill
-  sizes="(max-width: 768px) 48px, 48px" // Add this line
-  style={{ borderRadius: borderRadius.full, objectFit: 'cover' }}
-/>
+              src={comment.avatar_url}
+              alt={comment.username}
+              fill
+              sizes="(max-width: 768px) 48px, 48px" // Add this line
+              style={{ borderRadius: borderRadius.full, objectFit: 'cover' }}
+            />
           ) : (
             comment.username[0]?.toUpperCase() || 'U'
           )}
@@ -1536,37 +1630,191 @@ export default function CommunityDetailPage() {
                   {formatRecentActivity(comment.created_at)}
                 </p>
               </div>
-              {(comment.user_id === user?.id || isModerator) && (
+              <div
+                ref={commentMenuRef}
+                style={{
+                  position: 'relative',
+                  alignSelf: 'flex-start',
+                  marginLeft: 'auto'
+                }}
+              >
                 <button
-                  onClick={async () => {
-                    if (
-                      window.confirm(
-                        'Are you sure you want to delete this comment? This will also delete all replies to this comment.'
-                      )
-                    ) {
-                      await deleteComment(comment.id, postId, false);
-                    }
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setOpenCommentMenu(prev => prev === comment.id ? null : comment.id);
                   }}
-                  disabled={deletingCommentId === comment.id || deletingReplyId === comment.id}
                   style={{
-                    color: baseColors.text.muted,
                     background: 'none',
                     border: 'none',
                     cursor: 'pointer',
-                    opacity: deletingCommentId === comment.id || deletingReplyId === comment.id ? 0.5 : 1,
+                    padding: spacing.xs,
+                    borderRadius: borderRadius.sm,
+                    color: baseColors.text.muted,
                   }}
+                  aria-label="Comment options"
                 >
-                  {(deletingCommentId === comment.id || deletingReplyId === comment.id) ? (
-                    <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
-                  ) : (
-                    <Trash2 size={14} />
-                  )}
+                  <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>⋯</span>
                 </button>
-              )}
+
+                {openCommentMenu === comment.id && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '100%',
+                      right: 0,
+                      marginTop: spacing.xs,
+                      backgroundColor: baseColors.surface,
+                      border: `1px solid ${baseColors.border}`,
+                      borderRadius: borderRadius.md,
+                      boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06)',
+                      minWidth: '120px',
+                      zIndex: 10,
+                    }}
+                  >
+                    {/* Edit option for comment author */}
+                    {(comment.user_id === user?.id) && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingCommentId(comment.id);
+                          setEditedCommentContent(comment.content);
+                          setOpenCommentMenu(null);
+                        }}
+                        style={{
+                          width: '100%',
+                          textAlign: 'left',
+                          padding: `${spacing.sm} ${spacing.md}`,
+                          background: 'none',
+                          border: 'none',
+                          color: baseColors.primary,
+                          cursor: 'pointer',
+                          fontSize: '0.875rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: spacing.sm,
+                        }}
+                      >
+                        <Edit size={16} />
+                        Edit
+                      </button>
+                    )}
+
+                    {/* Delete option for author or moderators */}
+                    {(comment.user_id === user?.id || isModerator) && (
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (
+                            window.confirm(
+                              'Are you sure you want to delete this comment? This will also delete all replies to this comment.'
+                            )
+                          ) {
+                            await deleteComment(comment.id, postId, false);
+                          }
+                          setOpenCommentMenu(null);
+                        }}
+                        disabled={deletingCommentId === comment.id || deletingReplyId === comment.id}
+                        style={{
+                          width: '100%',
+                          textAlign: 'left',
+                          padding: `${spacing.sm} ${spacing.md}`,
+                          background: 'none',
+                          border: 'none',
+                          color: '#ef4444',
+                          cursor: 'pointer',
+                          fontSize: '0.875rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: spacing.sm,
+                          opacity: deletingCommentId === comment.id || deletingReplyId === comment.id ? 0.5 : 1,
+                        }}
+                      >
+                        {(deletingCommentId === comment.id || deletingReplyId === comment.id) ? (
+                          <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                        ) : (
+                          <Trash2 size={16} />
+                        )}
+                        Delete
+                      </button>
+                    )}
+
+                    {/* Report option for other users */}
+                    {(comment.user_id !== user?.id && !isModerator) && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setReportingCommentId(comment.id);
+                          setOpenCommentMenu(null);
+                        }}
+                        style={{
+                          width: '100%',
+                          textAlign: 'left',
+                          padding: `${spacing.sm} ${spacing.md}`,
+                          background: 'none',
+                          border: 'none',
+                          color: '#f97316',
+                          cursor: 'pointer',
+                          fontSize: '0.875rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: spacing.sm,
+                        }}
+                      >
+                        <Flag size={16} />
+                        Report
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-            <p style={{ color: baseColors.text.primary, fontSize: '0.875rem', marginTop: spacing.sm, whiteSpace: 'pre-line' }}>
-              {comment.content}
-            </p>
+            {editingCommentId === comment.id ? (
+              <div style={{ marginTop: spacing.sm }}>
+                <textarea
+                  value={editedCommentContent}
+                  onChange={(e) => setEditedCommentContent(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: `${spacing.sm} ${spacing.md}`,
+                    border: `1px solid ${baseColors.border}`,
+                    borderRadius: borderRadius.md,
+                    minHeight: '80px',
+                    fontSize: '0.875rem',
+                    marginBottom: spacing.sm,
+                  }}
+                  maxLength={500}
+                />
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: spacing.sm }}>
+                  <button
+                    onClick={() => {
+                      setEditingCommentId(null);
+                      setEditedCommentContent('');
+                    }}
+                    style={outlineButtonStyle}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => editComment(comment.id, editedCommentContent, postId)}
+                    disabled={updatingCommentId === comment.id || !editedCommentContent.trim()}
+                    style={{
+                      ...buttonStyle(baseColors.primary),
+                      opacity: updatingCommentId === comment.id || !editedCommentContent.trim() ? 0.7 : 1,
+                    }}
+                  >
+                    {updatingCommentId === comment.id ? (
+                      <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                    ) : (
+                      'Update'
+                    )}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p style={{ color: baseColors.text.primary, fontSize: '0.875rem', marginTop: spacing.sm, whiteSpace: 'pre-line' }}>
+                {comment.content}
+              </p>
+            )}
             {user && (
               <div style={{ marginTop: spacing.sm, display: 'flex', alignItems: 'center', gap: spacing.sm }}>
                 <button
@@ -2681,6 +2929,95 @@ export default function CommunityDetailPage() {
                   ) : (
                     'Update Banner'
                   )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Report Comment Modal - MOVED OUTSIDE BANNER MODAL */}
+      {reportingCommentId && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.6)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: spacing.lg,
+          }}
+        >
+          <div
+            style={{
+              background: baseColors.surface,
+              borderRadius: borderRadius.lg,
+              maxWidth: '500px',
+              width: '100%',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
+            }}
+          >
+            <div
+              style={{
+                padding: spacing.xl,
+                borderBottom: `1px solid ${baseColors.border}`,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <h3 style={{ fontSize: '1.125rem', fontWeight: 700, color: baseColors.text.primary }}>Report Comment</h3>
+              <button
+                onClick={() => {
+                  setReportingCommentId(null);
+                  setReportReason('');
+                }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: baseColors.text.muted }}
+              >
+                <X size={24} />
+              </button>
+            </div>
+            <div style={{ padding: spacing.xl, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
+              <p style={{ color: baseColors.text.secondary }}>
+                Please provide details about why you are reporting this comment. Reports help us maintain a respectful community.
+              </p>
+              <textarea
+                value={reportReason}
+                onChange={(e) => setReportReason(e.target.value)}
+                placeholder="Describe why you're reporting this comment..."
+                style={{
+                  width: '100%',
+                  padding: `${spacing.sm} ${spacing.md}`,
+                  border: `1px solid ${baseColors.border}`,
+                  borderRadius: borderRadius.md,
+                  minHeight: '100px',
+                  fontSize: '0.875rem',
+                }}
+                maxLength={500}
+              />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: spacing.md, paddingTop: spacing.md, borderTop: `1px solid ${baseColors.border}` }}>
+                <button
+                  onClick={() => {
+                    setReportingCommentId(null);
+                    setReportReason('');
+                  }}
+                  style={{ ...outlineButtonStyle, color: baseColors.text.primary }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => reportComment(reportingCommentId, reportReason)}
+                  disabled={!reportReason.trim()}
+                  style={{
+                    ...buttonStyle(baseColors.primary),
+                    opacity: !reportReason.trim() ? 0.7 : 1,
+                  }}
+                >
+                  Submit Report
                 </button>
               </div>
             </div>
