@@ -419,6 +419,10 @@ export default function ConnectPage() {
       console.warn('Non-critical: failed to create notifications:', notifyError.message);
       // Still proceed — request was created
     }
+    console.log('Calling create_targeted_notifications with:', {
+  req_type: 'one_on_one',
+  req_id: data.id,
+});
 
     setActiveOneOnOne({
       ...data,

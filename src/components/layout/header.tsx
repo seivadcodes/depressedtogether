@@ -82,10 +82,11 @@ export default function Header() {
 
     // Fetch unread notifications
     const { count, error: notifError } = await supabase
-      .from('notifications')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', user.id)
-      .eq('read', false);
+  .from('notifications')
+  .select('*', { count: 'exact', head: true })
+  .eq('user_id', user.id)
+  .eq('read', false)
+  .gt('expires_at', new Date().toISOString());
     if (!notifError) {
       setUnreadNotifications(count || 0);
     } else {
