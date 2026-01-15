@@ -198,7 +198,6 @@ export default function PublicProfile() {
 
   return (
     <div style={{ padding: '1rem', maxWidth: '1200px', margin: '2rem auto', fontFamily: 'system-ui' }}>
-      {/* Profile Header */}
       <div
         style={{
           background: '#fff',
@@ -325,9 +324,7 @@ export default function PublicProfile() {
         </p>
       </div>
 
-      {/* Responsive Content Area */}
       {isMobile ? (
-        /* Mobile: Tabs */
         <div style={{ width: '100%' }}>
           <div
             style={{
@@ -404,7 +401,6 @@ export default function PublicProfile() {
           )}
         </div>
       ) : (
-        /* Desktop: 60% / 40% side-by-side */
         <div className="desktop-content">
           <div className="posts-column">
             <h2 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '1rem', color: '#1e293b' }}>
@@ -439,7 +435,6 @@ export default function PublicProfile() {
         </div>
       )}
 
-      {/* Message Overlay */}
       {showMessageOverlay && profile && (
         <SendMessageOverlay
           isOpen={true}
