@@ -1470,112 +1470,112 @@ avatar_url
   }
 
   // Mobile view: Show chat view or conversations list
-  // Mobile view: Show chat view or conversations list
-if (isMobileView && showChatView && selectedConversation) {
-  
+  if (isMobileView && showChatView && selectedConversation) {
 
-  return (
-    <div style={{
-      height: '100vh',
-      backgroundColor: '#f9fafb',
-      display: 'flex',
-      flexDirection: 'column'
-    }}>
-      {/* Mobile Chat Header */}
+    const {
+
+
+    } = selectedConversation;
+    // Use the live-updated state instead of stale conversation data
+    const safeLastSeen = otherUserLastSeen;
+    return (
       <div style={{
-        padding: '50px',
-        backgroundColor: 'white',
-        borderBottom: '1px solid #e2e8f0',
+        height: '100vh',
+        backgroundColor: '#f9fafb',
         display: 'flex',
-        alignItems: 'center',
-        gap: '12px',
-        position: 'sticky',
-        top: 0,
-        zIndex: 10
+        flexDirection: 'column'
       }}>
-        <button
-          onClick={handleBackToConversations}
-          style={{
-            background: 'none',
-            border: 'none',
-            fontSize: '24px',
-            cursor: 'pointer',
-            color: '#64748b',
-            padding: '4px'
-          }}
-        >
-          ←
-        </button>
-        {selectedConversation.other_user_avatar_url ? (
-          <Image
-            src={selectedConversation.other_user_avatar_url}
-            alt=""
-            width={40}
-            height={40}
+        {/* Mobile Chat Header */}
+        <div style={{
+          padding: '50px',
+          backgroundColor: 'white',
+          borderBottom: '1px solid #e2e8f0',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          position: 'sticky',
+          top: 0,
+          zIndex: 10
+        }}>
+          <button
+            onClick={handleBackToConversations}
             style={{
-              borderRadius: '50%',
-              objectFit: 'cover',
-              border: '2px solid #e2e8f0'
+              background: 'none',
+              border: 'none',
+              fontSize: '24px',
+              cursor: 'pointer',
+              color: '#64748b',
+              padding: '4px'
             }}
-          />
-        ) : (
-          <div style={{
-            width: '40px',
-            height: '40px',
-            borderRadius: '50%',
-            backgroundColor: '#e0e7ff',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontWeight: '600',
-            fontSize: '16px',
-            color: '#4f46e5'
-          }}>
-            {getInitials(selectedConversation.other_user_full_name)}
-          </div>
-        )}
-        <div style={{ flex: 1 }}>
-          <h3 style={{
-            fontSize: '16px',
-            fontWeight: '700',
-            color: '#1e293b',
-            margin: 0
-          }}>
-            {selectedConversation.other_user_full_name}
-          </h3>
-          <p style={{ fontSize: '12px', color: isUserOnline(otherUserLastSeen) ? '#10b981' : '#64748b', margin: '2px 0 0' }}>
-            {isUserOnline(otherUserLastSeen) ? 'Online' : `Last seen ${formatLastSeen(otherUserLastSeen)}`}
-          </p>
-        </div>
-        {/* Call Button */}
-        <button
-          onClick={handleCallUser}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: '#4f46e5',
-            cursor: 'pointer',
-            fontSize: '24px',
-            padding: '8px',
-            borderRadius: '50%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-          onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
-          onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-        >
-          📞
-        </button>
-      </div>
+          >
+            ←
+          </button>
 
-      {/* Main Content: Messages + Input */}
-      <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        flex: 1,
-        overflow: 'hidden'
-      }}>
+          {selectedConversation.other_user_avatar_url ? (
+            <Image
+              src={selectedConversation.other_user_avatar_url}
+              alt=""
+              width={40}
+              height={40}
+              style={{
+                borderRadius: '50%',
+                objectFit: 'cover',
+                border: '2px solid #e2e8f0'
+              }}
+            />
+          ) : (
+            <div style={{
+              width: '40px',
+              height: '40px',
+              borderRadius: '50%',
+              backgroundColor: '#e0e7ff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontWeight: '600',
+              fontSize: '16px',
+              color: '#4f46e5'
+            }}>
+              {getInitials(selectedConversation.other_user_full_name)}
+            </div>
+          )}
+
+          <div style={{ flex: 1 }}>
+            <h3 style={{
+              fontSize: '16px',
+              fontWeight: '700',
+              color: '#1e293b',
+              margin: 0
+            }}>
+              {selectedConversation.other_user_full_name}
+            </h3>
+            <p style={{ fontSize: '12px', color: isUserOnline(safeLastSeen) ? '#10b981' : '#64748b', margin: '2px 0 0' }}>
+              {isUserOnline(safeLastSeen) ? 'Online' : `Last seen ${formatLastSeen(safeLastSeen)}`}
+            </p>
+          </div>
+
+          {/* Call Button */}
+          <button
+            onClick={handleCallUser}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#4f46e5',
+              cursor: 'pointer',
+              fontSize: '24px',
+              padding: '8px',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+            onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
+            onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+          >
+            📞
+          </button>
+        </div>
+
         {/* Messages Area */}
         <div style={{
           flex: 1,
@@ -1584,8 +1584,7 @@ if (isMobileView && showChatView && selectedConversation) {
           display: 'flex',
           flexDirection: 'column',
           gap: '12px',
-          backgroundColor: '#f9fafb',
-          paddingBottom: '80px' // space to prevent last msg from being hidden behind input
+          backgroundColor: '#f9fafb'
         }}>
           {isMessagesLoading ? (
             <div style={{
@@ -1612,6 +1611,8 @@ if (isMobileView && showChatView && selectedConversation) {
                 const repliedMessage = messages.find(m => m.id === msg.reply_to);
                 const isDeleted = msg.deleted_for_everyone;
                 const isDeletedForMe = msg.deleted_for_me?.includes(currentUserId || '');
+
+                // Calculate reactions
                 const reactions = msg.reactions || {};
                 const allReactions = Object.values(reactions).flat();
                 const reactionCounts = allReactions.reduce((acc, emoji) => {
@@ -1636,7 +1637,12 @@ if (isMobileView && showChatView && selectedConversation) {
                       position: 'relative'
                     }}
                   >
-                    <div style={{ maxWidth: '80%', position: 'relative' }}>
+                    
+
+                    <div style={{
+                      maxWidth: '80%',
+                      position: 'relative'
+                    }}>
                       {repliedMessage && !repliedMessage.deleted_for_everyone && !repliedMessage.deleted_for_me?.includes(currentUserId || '') && (
                         <div
                           onClick={() => scrollToMessage(repliedMessage.id)}
@@ -1658,6 +1664,7 @@ if (isMobileView && showChatView && selectedConversation) {
                           </div>
                         </div>
                       )}
+
                       <div
                         onMouseDown={(e) => {
                           if (!isDeleted && !isDeletedForMe && !isOwn && e.button === 0) {
@@ -1691,9 +1698,10 @@ if (isMobileView && showChatView && selectedConversation) {
                           userSelect: 'none',
                           WebkitUserSelect: 'none',
                           overflowWrap: 'break-word'
+
                         }}
                       >
-                        {/* Message Menu Button */}
+                        {/* Message Menu Button - Only show for non-tombstone, non-deleted-for-me messages */}
                         {currentUserId && !isDeletedForMe && !isDeleted && (
                           <div className="message-menu-container" style={{
                             position: 'absolute',
@@ -1732,6 +1740,8 @@ if (isMobileView && showChatView && selectedConversation) {
                             >
                               ⋮
                             </button>
+
+                            {/* Message Menu Dropdown - Only show non-delete options for tombstone messages */}
                             {showMessageMenu === msg.id && (
                               <div style={{
                                 position: 'absolute',
@@ -1770,6 +1780,7 @@ if (isMobileView && showChatView && selectedConversation) {
                                     >
                                       ↩️ Reply
                                     </button>
+
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
@@ -1794,6 +1805,8 @@ if (isMobileView && showChatView && selectedConversation) {
                                     </button>
                                   </>
                                 )}
+
+                                {/* Only show "Delete for Everyone" if sender AND not already deleted (tombstone) */}
                                 {isOwn && !isDeleted && (
                                   <button
                                     onClick={(e) => {
@@ -1836,8 +1849,8 @@ if (isMobileView && showChatView && selectedConversation) {
                                 return (
                                   <div style={{
                                     position: 'relative',
-                                    width: '300px',
-                                    height: '300px',
+                                    width: '300px',      // ✅ full message width
+                                    height: '300px',    // ✅ minimum visible height (not auto!)
                                     borderRadius: '8px',
                                     overflow: 'hidden',
                                   }}>
@@ -1846,7 +1859,7 @@ if (isMobileView && showChatView && selectedConversation) {
                                       alt="Attachment"
                                       fill
                                       style={{
-                                        objectFit: 'cover',
+                                        objectFit: 'cover', // or 'contain' if you prefer no cropping
                                         cursor: 'pointer',
                                       }}
                                       onClick={() => window.open(url, '_blank')}
@@ -1910,7 +1923,7 @@ if (isMobileView && showChatView && selectedConversation) {
                           <div>{msg.content}</div>
                         )}
 
-                        {/* Reactions */}
+                        {/* Reactions Display */}
                         {Object.keys(reactionCounts).length > 0 && (
                           <div style={{
                             display: 'flex',
@@ -1939,7 +1952,6 @@ if (isMobileView && showChatView && selectedConversation) {
                           </div>
                         )}
 
-                        {/* Timestamp */}
                         <div style={{
                           fontSize: '10px',
                           textAlign: 'right',
@@ -1958,36 +1970,45 @@ if (isMobileView && showChatView && selectedConversation) {
           )}
         </div>
 
-        {/* Typing Indicator */}
-        {isOtherUserTyping && selectedConversation && (
-          <div style={{
-            padding: '8px 16px',
-            fontSize: '14px',
-            color: '#64748b',
-            fontStyle: 'italic',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            justifyContent: 'center'
-          }}>
-            <span>{selectedConversation.other_user_full_name} is typing</span>
-            <div style={{ display: 'flex', gap: '2px' }}>
-              {[0, 1, 2].map(i => (
-                <div key={i} style={{
-                  width: '8px',
-                  height: '8px',
+        {/* Reaction Picker Modal */}
+        {showReactionPicker && reactionPickerPosition && (
+          <div
+            className="reaction-picker-container"
+            style={{
+              position: 'fixed',
+              bottom: '100px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              backgroundColor: 'white',
+              borderRadius: '24px',
+              boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
+              zIndex: 1000,
+              padding: '8px',
+              display: 'flex',
+              gap: '8px',
+              border: '1px solid #e2e8f0'
+            }}
+          >
+            {['❤️', '😊', '👍', '👏', '🙏', '🎉', '😢', '🤔'].map(emoji => (
+              <button
+                key={emoji}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleReaction(showReactionPicker, emoji);
+                }}
+                style={{
+                  fontSize: '24px',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '8px',
                   borderRadius: '50%',
-                  backgroundColor: '#94a3b8',
-                  animation: `typing-bounce 1.4s infinite ease-in-out ${i * 0.16}s`,
-                }} />
-              ))}
-            </div>
-            <style>{`
-              @keyframes typing-bounce {
-                0%, 100% { transform: translateY(0); }
-                50% { transform: translateY(-5px); }
-              }
-            `}</style>
+                  transition: 'transform 0.2s'
+                }}
+              >
+                {emoji}
+              </button>
+            ))}
           </div>
         )}
 
@@ -2033,14 +2054,50 @@ if (isMobileView && showChatView && selectedConversation) {
           </div>
         )}
 
-        {/* Message Input — NO STICKY */}
+        {/* ADD THIS TYPING INDICATOR COMPONENT FOR MOBILE VIEW */}
+        {isOtherUserTyping && selectedConversation && (
+          <div style={{
+            padding: '8px 16px',
+            fontSize: '14px',
+            color: '#64748b',
+            fontStyle: 'italic',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            justifyContent: 'center'
+          }}>
+            <span>{selectedConversation.other_user_full_name} is typing</span>
+            <div style={{ display: 'flex', gap: '2px' }}>
+              {[0, 1, 2].map(i => (
+                <div key={i} style={{
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
+                  backgroundColor: '#94a3b8',
+                  animation: `typing-bounce 1.4s infinite ease-in-out ${i * 0.16}s`,
+                }} />
+              ))}
+            </div>
+            <style>{`
+      @keyframes typing-bounce {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-5px); }
+      }
+    `}</style>
+          </div>
+        )}
+
+        {/* Message Input */}
         <form
           onSubmit={handleSendMessage}
           style={{
             padding: '12px 16px',
             backgroundColor: 'white',
-            borderTop: '1px solid #e2e8f0'
-            // ✅ No position: sticky, bottom: 0
+            paddingBottom: '70px',
+            borderTop: '1px solid #e2e8f0',
+            
+            bottom: 0,
+            zIndex: 10
           }}
         >
           <div style={{
@@ -2074,6 +2131,7 @@ if (isMobileView && showChatView && selectedConversation) {
                 e.currentTarget.style.color = '#64748b';
               }}
             >
+              {/* Grey/Flat Face SVG */}
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="12" cy="12" r="10" stroke="#64748b" />
                 <path stroke="#64748b" strokeLinecap="round" strokeLinejoin="round" d="M8 14s1.5 2 4 2 4-2 4-2" />
@@ -2081,6 +2139,7 @@ if (isMobileView && showChatView && selectedConversation) {
                 <path stroke="#64748b" strokeLinecap="round" strokeLinejoin="round" d="M15 9h.01" />
               </svg>
             </button>
+
             <input
               ref={messageInputRef}
               type="text"
@@ -2088,7 +2147,7 @@ if (isMobileView && showChatView && selectedConversation) {
               onChange={(e) => {
                 setNewMessage(e.target.value);
                 handleUserTyping();
-                trackActivity();
+                trackActivity(); // 👈 this marks you as active while typing
               }}
               placeholder={replyingTo ? "Write your reply..." : "Type your message…"}
               disabled={isSending || uploading}
@@ -2102,6 +2161,7 @@ if (isMobileView && showChatView && selectedConversation) {
                 color: '#1e293b'
               }}
             />
+
             <label htmlFor="file-upload-mobile" style={{
               cursor: 'pointer',
               padding: '8px',
@@ -2119,11 +2179,24 @@ if (isMobileView && showChatView && selectedConversation) {
               {uploading ? (
                 <div style={{ color: '#94a3b8' }}>📤</div>
               ) : (
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94A3 3 0 1 1 19.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 0 0 2.112 2.13" />
-                </svg>
+                <label htmlFor="file-upload" style={{
+                  cursor: 'pointer',
+                  padding: '8px',
+                  display: 'flex',
+                  alignItems: 'center'
+                }}>
+                  <input id="file-upload" type="file" ref={fileInputRef} onChange={handleFileUpload} accept="image/*,.pdf" style={{ display: 'none' }} />
+                  {uploading ? (
+                    <div style={{ color: '#94a3b8' }}>📤</div>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94A3 3 0 1 1 19.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 0 0 2.112 2.13" />
+                    </svg>
+                  )}
+                </label>
               )}
             </label>
+
             <button
               type="submit"
               disabled={!newMessage.trim() || isSending || uploading}
@@ -2175,51 +2248,8 @@ if (isMobileView && showChatView && selectedConversation) {
           )}
         </form>
       </div>
-
-      {/* Reaction Picker Modal (outside flex flow) */}
-      {showReactionPicker && reactionPickerPosition && (
-        <div
-          className="reaction-picker-container"
-          style={{
-            position: 'fixed',
-            bottom: '100px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            backgroundColor: 'white',
-            borderRadius: '24px',
-            boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
-            zIndex: 1000,
-            padding: '8px',
-            display: 'flex',
-            gap: '8px',
-            border: '1px solid #e2e8f0'
-          }}
-        >
-          {['❤️', '😊', '👍', '👏', '🙏', '🎉', '😢', '🤔'].map(emoji => (
-            <button
-              key={emoji}
-              onClick={(e) => {
-                e.stopPropagation();
-                handleReaction(showReactionPicker, emoji);
-              }}
-              style={{
-                fontSize: '24px',
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                padding: '8px',
-                borderRadius: '50%',
-                transition: 'transform 0.2s'
-              }}
-            >
-              {emoji}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+    );
+  }
 
   // Desktop view or mobile conversations list
   return (
