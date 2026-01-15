@@ -143,7 +143,7 @@ export default function SendMessageOverlay({
       if (messageError) throw messageError;
 
       // Redirect to conversation
-      router.push(`/messages/${conversationId}`);
+      router.push(`/messages/`);
       onClose();
       setMessage('');
       setFilePreview(null);

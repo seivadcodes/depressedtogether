@@ -3,29 +3,36 @@
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
-import { Phone, Users, User } from 'lucide-react';
+import { Phone, Users, User, MoreVertical, AlertTriangle, Camera } from 'lucide-react';
 import Link from 'next/link';
+import ReportModal from '@/components/modals/ReportModal';
+import { useCall } from '@/context/CallContext';
+import { useAuth } from '@/hooks/useAuth';
 
 interface CallHistoryItem {
   id: string;
   type: 'one-on-one' | 'group';
   room_id: string;
   started_at: string;
-  duration_seconds?: number;
-  participants: {
-    id: string;
+  otherParticipant?: { 
+    id: string; 
     name: string;
-  }[];
+    avatar_url?: string;
+  };
 }
 
 export default function CallHistoryPage() {
   const [calls, setCalls] = useState<CallHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const supabase = createClient();
   const router = useRouter();
-
-  useEffect(() => {
+const [reportTarget, setReportTarget] = useState<{ id: string; type: 'call' } | null>(null);
+ const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+const { startCall } = useCall();
+const { user: currentUser } = useAuth(); 
+useEffect(() => {
     const fetchCallHistory = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -34,116 +41,104 @@ export default function CallHistoryPage() {
           return;
         }
         const userId = session.user.id;
+        setCurrentUserId(userId); 
 
-        // Fetch 1:1 calls where user was either caller or acceptor AND status = 'completed'
+        // === 1:1 Calls ===
         const { data: oneOnOneCalls, error: oneOnError } = await supabase
           .from('quick_connect_requests')
-          .select(`
-            room_id,
-            user_id,
-            acceptor_id,
-            call_started_at,
-            call_ended_at
-          `)
+          .select('room_id, user_id, acceptor_id, call_started_at')
           .or(`user_id.eq.${userId},acceptor_id.eq.${userId}`)
-          .eq('status', 'completed')
+          .not('call_started_at', 'is', null)
           .order('call_started_at', { ascending: false });
 
         if (oneOnError) throw oneOnError;
 
-        // Fetch group calls where user participated
-        const { data: groupCalls, error: groupError } = await supabase
-          .from('quick_group_requests')
-          .select(`
-            room_id,
-            user_id,
-            call_started_at,
-            call_ended_at
-          `)
-          .eq('status', 'completed')
-          .order('call_started_at', { ascending: false });
+        // === Group Calls: get rooms user joined, then check if call_started_at exists ===
+        const { data: groupRooms, error: groupRoomError } = await supabase
+          .from('room_participants')
+          .select('room_id')
+          .eq('user_id', userId);
 
-        if (groupError) throw groupError;
+        if (groupRoomError) throw groupRoomError;
 
-        // Get all unique participant IDs for profile lookup
+        let groupCalls: { room_id: string; call_started_at: string }[] = [];
+        if (groupRooms.length > 0) {
+          const roomIds = groupRooms.map(r => r.room_id);
+          const { data: groupData, error: groupError } = await supabase
+            .from('quick_group_requests')
+            .select('room_id, call_started_at')
+            .in('room_id', roomIds)
+            .not('call_started_at', 'is', null)
+            .order('call_started_at', { ascending: false });
+
+          if (groupError) throw groupError;
+          groupCalls = groupData || [];
+        }
+
+        // === Fetch participant names and avatar URLs for 1:1 ===
         const participantIds = new Set<string>();
         oneOnOneCalls.forEach(call => {
-          participantIds.add(call.user_id);
-          participantIds.add(call.acceptor_id);
-        });
-        groupCalls.forEach(call => {
-          participantIds.add(call.user_id); // host
-          // Note: full participant list would require joining room_participants
+          if (call.user_id !== userId) participantIds.add(call.user_id);
+          if (call.acceptor_id !== userId) participantIds.add(call.acceptor_id);
         });
 
-        // Fetch profiles
-        const { data: profiles, error: profileError } = await supabase
-          .from('profiles')
-          .select('id, full_name, email')
-          .in('id', Array.from(participantIds));
+        const profileMap = new Map<string, { name: string; avatar_url?: string }>();
+        if (participantIds.size > 0) {
+          const { data: profiles, error: profileError } = await supabase
+            .from('profiles')
+            .select('id, full_name, email, avatar_url') // Added avatar_url
+            .in('id', Array.from(participantIds));
 
-        if (profileError) throw profileError;
+          if (profileError) throw profileError;
+          
+          profiles?.forEach(p => {
+            profileMap.set(p.id, {
+              name: p.full_name || p.email || 'Anonymous',
+              avatar_url: p.avatar_url
+            });
+          });
+        }
 
-        const profileMap = new Map(
-          profiles.map(p => [
-            p.id,
-            p.full_name || p.email || 'Anonymous'
-          ])
-        );
-
-        // Build history items
+        // === Build history ===
         const historyItems: CallHistoryItem[] = [];
 
-        // Process 1:1 calls
-        for (const call of oneOnOneCalls) {
-          if (!call.call_started_at) continue;
+        oneOnOneCalls.forEach(call => {
           const otherId = call.user_id === userId ? call.acceptor_id : call.user_id;
-          const otherName = profileMap.get(otherId) || 'Unknown';
-          const duration = call.call_ended_at && call.call_started_at
-            ? Math.floor(
-                (new Date(call.call_ended_at).getTime() - new Date(call.call_started_at).getTime()) / 1000
-              )
-            : undefined;
-
+          const profile = profileMap.get(otherId) || { name: 'Unknown' };
+          
           historyItems.push({
             id: call.room_id,
             type: 'one-on-one',
             room_id: call.room_id,
             started_at: call.call_started_at,
-            duration_seconds: duration,
-            participants: [{ id: otherId, name: otherName }],
+            otherParticipant: {
+              id: otherId,
+              name: profile.name,
+              avatar_url: profile.avatar_url
+            },
           });
-        }
+        });
 
-        // Process group calls
-        for (const call of groupCalls) {
-          if (!call.call_started_at) continue;
-          const hostName = profileMap.get(call.user_id) || 'Host';
-          const duration = call.call_ended_at && call.call_started_at
-            ? Math.floor(
-                (new Date(call.call_ended_at).getTime() - new Date(call.call_started_at).getTime()) / 1000
-              )
-            : undefined;
-
+        groupCalls.forEach(call => {
           historyItems.push({
             id: call.room_id,
             type: 'group',
             room_id: call.room_id,
             started_at: call.call_started_at,
-            duration_seconds: duration,
-            participants: [{ id: call.user_id, name: hostName }],
           });
-        }
+        });
 
-        // Sort by started_at descending
         historyItems.sort((a, b) =>
           new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
         );
 
         setCalls(historyItems);
       } catch (err) {
-        console.error('Failed to load call history:', err);
-        setError('Unable to load call history.');
+        console.error('Call history error:', err);
+        const errorMessage = err instanceof Error 
+          ? err.message 
+          : 'Failed to load call history';
+        setError(errorMessage);
       } finally {
         setLoading(false);
       }
@@ -152,19 +147,8 @@ export default function CallHistoryPage() {
     fetchCallHistory();
   }, [supabase, router]);
 
-  const formatDuration = (seconds?: number): string => {
-    if (seconds == null) return '—';
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = seconds % 60;
-    if (h > 0) return `${h}h ${m}m`;
-    if (m > 0) return `${m}m ${s}s`;
-    return `${s}s`;
-  };
-
   const formatDate = (isoString: string): string => {
-    const date = new Date(isoString);
-    return date.toLocaleDateString(undefined, {
+    return new Date(isoString).toLocaleString(undefined, {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
@@ -173,23 +157,96 @@ export default function CallHistoryPage() {
     });
   };
 
+
+  const handleReCall = async (call: CallHistoryItem) => {
+  if (call.type === 'group') {
+    // Optional: handle group re-call differently, or disable
+    // For now, we'll skip group re-calls
+    alert('Rejoining group calls is not supported yet.');
+    return;
+  }
+
+  if (!call.otherParticipant?.id || !call.otherParticipant?.name) {
+    console.warn('Missing participant info for re-call');
+    return;
+  }
+
+  // Match the profile page's call signature
+  await startCall(
+    call.otherParticipant.id,           // recipientId
+    call.otherParticipant.name,         // recipientName
+    'audio',                            // callType
+    currentUser?.id || currentUserId!,  // callerId — fix the bug!
+    call.room_id                        // roomId (can be reused or generate new)
+  );
+};
+
+ const handleReport = (callId: string) => {
+  setReportTarget({ id: callId, type: 'call' });
+  setOpenMenuId(null); // Close kebab menu
+};
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 pt-16 px-4 flex items-center justify-center">
-        <p className="text-gray-600">Loading call history...</p>
+      <div style={{
+        minHeight: '100vh',
+        backgroundColor: '#f9fafb',
+        paddingTop: '4rem',
+        
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        <div style={{
+          textAlign: 'center',
+          padding: '2rem',
+          backgroundColor: 'white',
+          borderRadius: '1.5rem',
+          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+        }}>
+          <Phone size={48} style={{ color: '#3b82f6', margin: '0 auto 1rem' }} />
+          <p style={{ color: '#6b7280', fontSize: '1.125rem' }}>Loading call history...</p>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 pt-16 px-4 flex flex-col items-center justify-center">
-        <Phone className="w-12 h-12 text-red-500 mb-4" />
-        <h2 className="text-xl font-semibold text-gray-800 mb-2">Oops!</h2>
-        <p className="text-gray-600 text-center max-w-md">{error}</p>
+      <div style={{
+        minHeight: '100vh',
+        backgroundColor: '#f9fafb',
+        paddingTop: '4rem',
+        padding: '1rem',
+        textAlign: 'center'
+      }}>
+        <AlertTriangle size={48} style={{ color: '#ef4444', margin: '0 auto 1.5rem' }} />
+        <h2 style={{ 
+          fontSize: '1.875rem',
+          fontWeight: '600',
+          color: '#1f2937',
+          marginBottom: '0.5rem'
+        }}>Error Loading History</h2>
+        <p style={{ 
+          color: '#6b7280',
+          maxWidth: '42rem',
+          margin: '0 auto 1.5rem'
+        }}>{error}</p>
         <button
           onClick={() => router.refresh()}
-          className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          style={{
+            marginTop: '1rem',
+            padding: '0.75rem 1.5rem',
+            backgroundColor: '#2563eb',
+            color: 'white',
+            border: 'none',
+            borderRadius: '0.75rem',
+            cursor: 'pointer',
+            fontSize: '0.875rem',
+            transition: 'background-color 0.2s'
+          }}
+          onMouseOver={e => e.currentTarget.style.backgroundColor = '#1d4ed8'}
+          onMouseOut={e => e.currentTarget.style.backgroundColor = '#2563eb'}
         >
           Retry
         </button>
@@ -198,68 +255,243 @@ export default function CallHistoryPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pt-16 pb-8 px-4">
-      <div className="max-w-2xl mx-auto">
-        <div className="mb-6 text-center">
-          <h1 className="text-2xl font-bold text-gray-900">Call History</h1>
-          <p className="text-gray-600 mt-1">Past conversations that mattered</p>
-        </div>
+    <div style={{
+      minHeight: '100vh',
+      backgroundColor: '#f9fafb',
+      paddingTop: '4rem',
+      paddingBottom: '2rem',
+      padding: '1rem'
+    }}>
+      <div style={{ maxWidth: '42rem', margin: '0 auto' }}>
+        <h1 style={{ 
+          fontSize: '1.875rem',
+          fontWeight: '700',
+          color: '#111827',
+          textAlign: 'center',
+          marginBottom: '1.5rem'
+        }}>Call History</h1>
 
         {calls.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-sm p-6 text-center">
-            <Phone className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-            <p className="text-gray-500">No calls yet.</p>
-            <Link href="/connect" className="text-blue-600 hover:underline mt-2 inline-block">
-              Start a new connection
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '1.5rem',
+            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+            padding: '2.5rem',
+            textAlign: 'center'
+          }}>
+            <Phone size={40} style={{ color: '#9ca3af', margin: '0 auto 1rem' }} />
+            <p style={{ color: '#6b7280', fontSize: '1.125rem', marginBottom: '0.75rem' }}>
+              No calls in your history yet
+            </p>
+            <Link 
+              href="/connect"
+              style={{
+                color: '#2563eb',
+                textDecoration: 'none',
+                fontSize: '0.875rem',
+                display: 'inline-block',
+                marginTop: '0.5rem'
+              }}
+              onMouseOver={e => e.currentTarget.style.textDecoration = 'underline'}
+              onMouseOut={e => e.currentTarget.style.textDecoration = 'none'}
+            >
+              Start a new conversation
             </Link>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {calls.map((call) => (
-              <div
+              <div 
                 key={call.id}
-                className="bg-white rounded-xl shadow-sm p-4 flex items-start gap-4 hover:shadow-md transition-shadow"
+                style={{
+                  backgroundColor: 'white',
+                  borderRadius: '1.5rem',
+                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                  padding: '1.25rem',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '1rem',
+                  position: 'relative'
+                }}
               >
-                <div className="mt-1">
+                <div style={{ marginTop: '0.25rem' }}>
                   {call.type === 'group' ? (
-                    <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
-                      <Users className="w-5 h-5 text-purple-600" />
+                    <div style={{
+                      width: '2.5rem',
+                      height: '2.5rem',
+                      borderRadius: '9999px',
+                      backgroundColor: '#f3e8ff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      <Users size={20} style={{ color: '#7e22ce' }} />
                     </div>
                   ) : (
-                    <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                      <User className="w-5 h-5 text-blue-600" />
+                    <div style={{
+                      width: '2.5rem',
+                      height: '2.5rem',
+                      borderRadius: '9999px',
+                      overflow: 'hidden',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      {call.otherParticipant?.avatar_url ? (
+                        <img 
+                          src={call.otherParticipant.avatar_url} 
+                          alt="Avatar" 
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover'
+                          }}
+                        />
+                      ) : (
+                        <div style={{
+                          width: '100%',
+                          height: '100%',
+                          backgroundColor: '#dbeafe',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}>
+                          <User size={20} style={{ color: '#2563eb' }} />
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-baseline gap-2">
-                    <h3 className="font-semibold text-gray-900 truncate">
-                      {call.type === 'group' ? 'Group Support Call' : call.participants[0].name}
-                    </h3>
-                    <span className="text-xs text-gray-500">
-                      {call.type === 'group' ? 'Group' : '1:1'}
-                    </span>
-                  </div>
-                  <p className="text-sm text-gray-500 mt-1">
+                
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <h3 style={{ 
+                    fontWeight: '600', 
+                    color: '#111827', 
+                    fontSize: '1.125rem',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap'
+                  }}>
+                    {call.type === 'group'
+                      ? 'Group Session'
+                      : call.otherParticipant?.name || 'Private Session'}
+                  </h3>
+                  <p style={{ 
+                    color: '#6b7280', 
+                    fontSize: '0.875rem',
+                    marginTop: '0.25rem'
+                  }}>
                     {formatDate(call.started_at)}
                   </p>
                 </div>
-                <div className="text-right">
-                  <div className="text-sm font-mono text-gray-700">
-                    {formatDuration(call.duration_seconds)}
+                
+                <div style={{ 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  alignItems: 'flex-end',
+                  gap: '0.5rem'
+                }}>
+                  <button
+  onClick={() => handleReCall(call)}
+  style={{
+    padding: '0.375rem 0.75rem',
+    backgroundColor: '#3b82f6',
+    color: 'white',
+    border: 'none',
+    borderRadius: '9999px',
+    fontSize: '0.75rem',
+    fontWeight: '500',
+    cursor: 'pointer',
+  }}
+  onMouseOver={e => e.currentTarget.style.backgroundColor = '#2563eb'}
+  onMouseOut={e => e.currentTarget.style.backgroundColor = '#3b82f6'}
+>
+  📞 Call
+</button>
+                  <div style={{ position: 'relative' }}>
+                    <button
+                      onClick={() => setOpenMenuId(openMenuId === call.id ? null : call.id)}
+                      style={{
+                        width: '2rem',
+                        height: '2rem',
+                        borderRadius: '0.5rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: '#f3f4f6',
+                        border: 'none',
+                        cursor: 'pointer'
+                      }}
+                      aria-label="Call options"
+                    >
+                      <MoreVertical size={18} style={{ color: '#4b5563' }} />
+                    </button>
+                    
+                    {openMenuId === call.id && (
+                      <div style={{
+                        position: 'absolute',
+                        right: 0,
+                        top: '2.5rem',
+                        width: '12rem',
+                        backgroundColor: 'white',
+                        borderRadius: '0.75rem',
+                        boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+                        border: '1px solid #e5e7eb',
+                        zIndex: 50,
+                        padding: '0.25rem'
+                      }}>
+                        <button
+                          onClick={() => handleReport(call.id)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            padding: '0.5rem 0.75rem',
+                            borderRadius: '0.5rem',
+                            width: '100%',
+                            textAlign: 'left',
+                            border: 'none',
+                            backgroundColor: 'transparent',
+                            cursor: 'pointer'
+                          }}
+                          onMouseOver={e => e.currentTarget.style.backgroundColor = '#f9fafb'}
+                          onMouseOut={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                        >
+                          <AlertTriangle size={16} style={{ color: '#ef4444' }} />
+                          <span style={{ color: '#111827', fontSize: '0.875rem' }}>Report</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <Link
-                    href={`/room/${call.room_id}`}
-                    className="text-xs text-blue-600 hover:underline mt-1 inline-block"
-                  >
-                    Rejoin
-                  </Link>
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
+      {reportTarget && currentUserId && (
+  <ReportModal
+    isOpen={true}
+    onClose={() => setReportTarget(null)}
+    targetId={reportTarget.id}
+    targetType="call"
+    currentUserId={currentUserId}
+    // Optional: pass call duration if you track it
+    // For now, we'll omit it or compute it later
+    participants={
+      calls
+        .find(c => c.id === reportTarget.id && c.type === 'group')
+        ? [] // You’d need to fetch group participants separately if needed
+        : calls
+            .filter(c => c.id === reportTarget.id && c.type === 'one-on-one')
+            .map(c => ({
+              id: c.otherParticipant!.id,
+              name: c.otherParticipant!.name,
+            }))
+    }
+  />
+)}
     </div>
+    
   );
 }

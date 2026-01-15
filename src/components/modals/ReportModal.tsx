@@ -7,17 +7,19 @@ import toast from 'react-hot-toast';
 import { createClient } from '@/lib/supabase/client';
 
 type ReportTargetType = 'call' | 'comment' | 'post' | 'user' | 'community';
+
 type ParticipantOption = {
   id: string;
   name: string;
 };
+
 interface ReportContext {
   timestamp: string;
   call_type?: 'group' | 'one-on-one';
-  call_duration?: number;
+  call_duration?: number | null; // 👈 allow null to match DB
   reported_user_id?: string;
-  // Add other optional fields as needed in the future
 }
+
 export default function ReportModal({
   isOpen,
   onClose,
@@ -29,11 +31,11 @@ export default function ReportModal({
 }: {
   isOpen: boolean;
   onClose: () => void;
-  targetId: string;
+  targetId: string; // now safe as text
   targetType: ReportTargetType;
   currentUserId: string | null;
-  callDuration?: number; // optional, only for calls
-  participants?: ParticipantOption[]; // optional, for selecting specific user in group contexts
+  callDuration?: number | null; // 👈 explicitly allow null
+  participants?: ParticipantOption[];
 }) {
   const [reportReason, setReportReason] = useState('');
   const [selectedParticipantId, setSelectedParticipantId] = useState<string | null>(null);
@@ -47,12 +49,12 @@ export default function ReportModal({
     setIsSubmitting(true);
     try {
       const context: ReportContext = {
-  timestamp: new Date().toISOString(),
-};
+        timestamp: new Date().toISOString(),
+      };
 
       if (targetType === 'call') {
-        context.call_type = 'group'; // or infer if needed
-        context.call_duration = callDuration;
+        context.call_type = participants.length > 1 ? 'group' : 'one-on-one';
+        context.call_duration = callDuration ?? null; // safe assignment
         if (selectedParticipantId) {
           context.reported_user_id = selectedParticipantId;
         }
@@ -60,10 +62,12 @@ export default function ReportModal({
 
       const { error } = await supabase.from('reports').insert({
         target_type: targetType,
-        target_id: targetId,
-        reporter_id: currentUserId,
+        target_id: targetId, // ✅ now text — works with "call_123", etc.
+        reporter_id: currentUserId, // ✅ must be valid UUID
         reason: reportReason.trim(),
-        context,
+        created_at: new Date().toISOString(), // ✅ required
+        status: 'pending', // ✅ required
+        context: Object.keys(context).length > 0 ? context : null, // ✅ safe for jsonb
       });
 
       if (error) throw error;
@@ -98,13 +102,13 @@ export default function ReportModal({
         alignItems: 'center',
         justifyContent: 'center',
         zIndex: 1000,
-        padding: '1.5rem', // spacing.lg equivalent
+        padding: '1.5rem',
       }}
     >
       <div
         style={{
-          background: '#0f172a', // baseColors.surface
-          borderRadius: '0.75rem', // borderRadius.lg
+          background: '#0f172a',
+          borderRadius: '0.75rem',
           maxWidth: '500px',
           width: '100%',
           maxHeight: '90vh',
@@ -114,8 +118,8 @@ export default function ReportModal({
       >
         <div
           style={{
-            padding: '1.5rem', // spacing.xl
-            borderBottom: '1px solid #334155', // baseColors.border
+            padding: '1.5rem',
+            borderBottom: '1px solid #334155',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
@@ -187,7 +191,7 @@ export default function ReportModal({
             style={{
               display: 'flex',
               justifyContent: 'flex-end',
-              gap: '0.75rem', // spacing.md
+              gap: '0.75rem',
               paddingTop: '1rem',
               borderTop: '1px solid #334155',
             }}

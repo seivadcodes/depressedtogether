@@ -149,7 +149,7 @@ export default function ConnectPage() {
   const [isPostingOneOnOne, setIsPostingOneOnOne] = useState(false);
   const [isPostingGroup, setIsPostingGroup] = useState(false);
   const isRedirectingRef = useRef(false);
- 
+ const [acceptingRequestId, setAcceptingRequestId] = useState<string | null>(null);
  
 
   const [showContextModal, setShowContextModal] = useState<'one-on-one' | 'group' | null>(null);
@@ -556,91 +556,101 @@ export default function ConnectPage() {
   }
 };
 
-  const acceptOneOnOne = async (requestId: string) => {
-    if (!user || isRedirectingRef.current) return;
-    try {
-      const roomId = `quick-connect-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-      const { data: existing } = await supabase
-        .from('quick_connect_requests')
-        .select('*')
-        .eq('id', requestId)
-        .eq('status', 'available')
-        .gt('expires_at', new Date().toISOString())
-        .single();
-      if (!existing) {
-        setError('One-on-one request not found or expired.');
-        return;
-      }
+ const acceptOneOnOne = async (requestId: string) => {
+  if (!user || isRedirectingRef.current || acceptingRequestId) return;
+  
+  setAcceptingRequestId(requestId); // 👈 show loading on this button
+  try {
+    const roomId = `quick-connect-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+    const { data: existing } = await supabase
+      .from('quick_connect_requests')
+      .select('*')
+      .eq('id', requestId)
+      .eq('status', 'available')
+      .gt('expires_at', new Date().toISOString())
+      .single();
 
+    if (!existing) {
+      setError('One-on-one request not found or expired.');
+      setAcceptingRequestId(null);
+      return;
+    }
+
+    const { error: updateErr } = await supabase
+      .from('quick_connect_requests')
+      .update({
+        status: 'matched',
+        room_id: roomId,
+        acceptor_id: user.id,
+      })
+      .eq('id', requestId)
+      .eq('status', 'available');
+
+    if (updateErr) throw updateErr;
+
+    await supabase.from('room_participants').upsert([
+      { room_id: roomId, user_id: existing.user_id, role: 'participant' },
+      { room_id: roomId, user_id: user.id, role: 'participant' }
+    ], { onConflict: 'room_id,user_id' });
+
+    isRedirectingRef.current = true;
+    router.push(`/room/${roomId}`);
+  } catch (err) {
+    console.error('Failed to accept 1:1:', err);
+    setError('Failed to accept one-on-one request.');
+  } finally {
+    setAcceptingRequestId(null); // 👈 reset after success or error
+  }
+};
+
+const acceptGroup = async (requestId: string) => {
+  if (!user || isRedirectingRef.current || acceptingRequestId) return;
+  
+  setAcceptingRequestId(requestId);
+  try {
+    const { data: existing } = await supabase
+      .from('quick_group_requests')
+      .select('user_id, room_id, status')
+      .eq('id', requestId)
+      .eq('status', 'available')
+      .gt('expires_at', new Date().toISOString())
+      .single();
+
+    if (!existing) {
+      setError('Group request not found or expired.');
+      setAcceptingRequestId(null);
+      return;
+    }
+
+    let roomId = existing.room_id;
+    if (!roomId) {
+      roomId = `group-call-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
       const { error: updateErr } = await supabase
-        .from('quick_connect_requests')
-        .update({
-          status: 'matched',
-          room_id: roomId,
-          acceptor_id: user.id,
-        })
+        .from('quick_group_requests')
+        .update({ status: 'matched', room_id: roomId })
         .eq('id', requestId)
         .eq('status', 'available');
-
       if (updateErr) throw updateErr;
-
-      await supabase.from('room_participants').upsert([
-        { room_id: roomId, user_id: existing.user_id, role: 'participant' },
-        { room_id: roomId, user_id: user.id, role: 'participant' }
-      ], { onConflict: 'room_id,user_id' });
-
-      isRedirectingRef.current = true;
-      router.push(`/room/${roomId}`);
-    } catch (err) {
-      console.error('Failed to accept 1:1:', err);
-      setError('Failed to accept one-on-one request.');
     }
-  };
 
-  const acceptGroup = async (requestId: string) => {
-    if (!user || isRedirectingRef.current) return;
-    try {
-      const { data: existing } = await supabase
-        .from('quick_group_requests')
-        .select('user_id, room_id, status')
-        .eq('id', requestId)
-        .eq('status', 'available')
-        .gt('expires_at', new Date().toISOString())
-        .single();
+    await supabase.from('room_participants').upsert(
+      { room_id: roomId, user_id: user.id, role: 'participant' },
+      { onConflict: 'room_id,user_id' }
+    );
+    await supabase.from('room_participants').upsert(
+      { room_id: roomId, user_id: existing.user_id, role: 'host' },
+      { onConflict: 'room_id,user_id' }
+    );
 
-      if (!existing) {
-        setError('Group request not found or expired.');
-        return;
-      }
-
-      let roomId = existing.room_id;
-      if (!roomId) {
-        roomId = `group-call-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-        const { error: updateErr } = await supabase
-          .from('quick_group_requests')
-          .update({ status: 'matched', room_id: roomId })
-          .eq('id', requestId)
-          .eq('status', 'available');
-        if (updateErr) throw updateErr;
-      }
-
-      await supabase.from('room_participants').upsert(
-        { room_id: roomId, user_id: user.id, role: 'participant' },
-        { onConflict: 'room_id,user_id' }
-      );
-
-      await supabase.from('room_participants').upsert(
-        { room_id: roomId, user_id: existing.user_id, role: 'host' },
-        { onConflict: 'room_id,user_id' }
-      );
-
-      isRedirectingRef.current = true;
-      router.push(`/room/${roomId}`);
-    } catch (err) {
-      console.error('Failed to accept group:', err);
-      setError('Failed to join group call.');
-    }
-  };
+    isRedirectingRef.current = true;
+    router.push(`/room/${roomId}`);
+  } catch (err) {
+    console.error('Failed to accept group:', err);
+    setError('Failed to join group call.');
+  } finally {
+    setAcceptingRequestId(null);
+  }
+};
 
   const timeAgo = (timestamp: string) => {
     const now = new Date();
@@ -965,41 +975,62 @@ export default function ConnectPage() {
 
       {/* Join Button */}
       <button
-        onClick={(e) => {
-          e.stopPropagation();
-          if (!isRedirectingRef.current) {
-            if (request.type === 'group') {
-              acceptGroup(request.id);
-            } else {
-              acceptOneOnOne(request.id);
-            }
-          }
-        }}
-        style={{
-          background: request.type === 'group' ? '#3b82f6' : '#10b981',
-          color: 'white',
-          border: 'none',
-          borderRadius: '9999px',
-          padding: '0.5rem 1rem',
-          fontWeight: '600',
-          fontSize: '0.875rem',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.5rem',
-          transition: 'background 0.2s',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
-        }}
-        onMouseEnter={(e) =>
-          (e.currentTarget.style.background = request.type === 'group' ? '#2563eb' : '#059669')
-        }
-        onMouseLeave={(e) =>
-          (e.currentTarget.style.background = request.type === 'group' ? '#3b82f6' : '#10b981')
-        }
-      >
-        <Phone size={16} />
-        Connect
-      </button>
+  onClick={(e) => {
+    e.stopPropagation();
+    if (!isRedirectingRef.current) {
+      if (request.type === 'group') {
+        acceptGroup(request.id);
+      } else {
+        acceptOneOnOne(request.id);
+      }
+    }
+  }}
+  disabled={acceptingRequestId === request.id} // 👈 disable while loading
+  style={{
+    background: acceptingRequestId === request.id
+      ? '#9ca3af' // grayed out
+      : request.type === 'group'
+        ? '#3b82f6'
+        : '#10b981',
+    color: 'white',
+    border: 'none',
+    borderRadius: '9999px',
+    padding: '0.5rem 1rem',
+    fontWeight: '600',
+    fontSize: '0.875rem',
+    cursor: acceptingRequestId === request.id ? 'not-allowed' : 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    transition: 'background 0.2s',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+  }}
+  onMouseEnter={(e) => {
+    if (acceptingRequestId !== request.id) {
+      e.currentTarget.style.background = request.type === 'group' ? '#2563eb' : '#059669';
+    }
+  }}
+  onMouseLeave={(e) => {
+    if (acceptingRequestId !== request.id) {
+      e.currentTarget.style.background = request.type === 'group' ? '#3b82f6' : '#10b981';
+    }
+  }}
+>
+  {acceptingRequestId === request.id ? (
+    <>
+      <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" fill="none" opacity="0.25" />
+        <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" fill="currentColor" />
+      </svg>
+      Connecting...
+    </>
+  ) : (
+    <>
+      <Phone size={16} />
+      Connect
+    </>
+  )}
+</button>
     </div>
   </div>
 </div>

@@ -672,7 +672,7 @@ export default function MessagesPage() {
     };
   }, [currentUserId, supabase]);
 
-   const sendNotification = useCallback(async (notification: {
+  const sendNotification = useCallback(async (notification: {
     type: string;
     toUserId?: string;
     conversationId?: string;
@@ -749,7 +749,7 @@ export default function MessagesPage() {
   }, []);
 
 
- 
+
 
 
 
@@ -1637,25 +1637,7 @@ avatar_url
                       position: 'relative'
                     }}
                   >
-                    {!isOwn && (
-                      <div style={{
-                        width: '32px',
-                        height: '32px',
-                        borderRadius: '50%',
-                        backgroundColor: '#e0e7ff',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontWeight: '600',
-                        fontSize: '12px',
-                        color: '#4f46e5',
-                        flexShrink: 0,
-                        marginRight: '8px',
-                        marginTop: repliedMessage ? '20px' : '0'
-                      }}>
-                        {msg.sender.full_name.charAt(0)}
-                      </div>
-                    )}
+                    
 
                     <div style={{
                       maxWidth: '80%',
@@ -1725,7 +1707,7 @@ avatar_url
                             position: 'absolute',
                             top: '6px',
                             right: '6px',
-                            opacity: 0,
+                            opacity: .4,
                             transition: 'opacity 0.2s'
                           }}>
                             <button
@@ -2734,7 +2716,7 @@ avatar_url
                       )}
                     </div>
                     {/* Add this inside the conversation list item, near the end */}
-                    {conv.unread_count && conv.unread_count > 0 && (
+                    {(conv.unread_count ?? 0) > 0 && (
                       <div style={{
                         position: 'absolute',
                         top: isMobileView ? '10px' : '16px',
@@ -2751,7 +2733,7 @@ avatar_url
                         fontWeight: 'bold',
                         padding: '0 4px'
                       }}>
-                        {conv.unread_count > 9 ? '9+' : conv.unread_count}
+                        {(conv.unread_count ?? 0) > 9 ? '9+' : conv.unread_count}
                       </div>
                     )}
                   </div>
@@ -2921,25 +2903,7 @@ avatar_url
                                 position: 'relative'
                               }}
                             >
-                              {!isOwn && (
-                                <div style={{
-                                  width: '36px',
-                                  height: '36px',
-                                  borderRadius: '50%',
-                                  backgroundColor: '#e0e7ff',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  fontWeight: '600',
-                                  fontSize: '14px',
-                                  color: '#4f46e5',
-                                  flexShrink: 0,
-                                  marginRight: '12px',
-                                  marginTop: repliedMessage ? '24px' : '0'
-                                }}>
-                                  {msg.sender.full_name.charAt(0)}
-                                </div>
-                              )}
+                              
 
                               <div style={{
                                 maxWidth: '70%',

@@ -7,8 +7,10 @@ import { createClient } from '@/lib/supabase';
 import { PostCard } from '@/components/PostCard';
 import { GriefType } from '@/app/dashboard/useDashboardLogic';
 import { useAuth } from '@/hooks/useAuth';
+import { useCall } from '@/context/CallContext';
 import Image from 'next/image';
 import Angels from './angels';
+import SendMessageOverlay from '@/components/modals/SendMessageOverlay';
 
 const griefLabels: Record<string, string> = {
   parent: 'Loss of a Parent',
@@ -55,6 +57,7 @@ interface Post {
 export default function PublicProfile() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
+  const { startCall } = useCall();
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
@@ -62,6 +65,7 @@ export default function PublicProfile() {
   const [error, setError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [activeTab, setActiveTab] = useState<'posts' | 'angels'>('posts');
+  const [showMessageOverlay, setShowMessageOverlay] = useState(false);
 
   const checkScreenSize = useCallback(() => {
     if (typeof window !== 'undefined') {
@@ -151,6 +155,22 @@ export default function PublicProfile() {
     fetchProfileAndPosts();
   }, [id, user]);
 
+  const handleCall = async () => {
+    if (!profile?.id || !profile.full_name) return;
+    await startCall(
+      profile.id,
+      profile.full_name || 'Anonymous',
+      'audio',
+      profile.id,
+      profile.id
+    );
+  };
+
+  const handleMessage = () => {
+    if (!profile?.id) return;
+    setShowMessageOverlay(true);
+  };
+
   if (loading) {
     return (
       <div style={{ padding: '2rem', textAlign: 'center', fontSize: '1rem', color: '#444' }}>
@@ -168,6 +188,7 @@ export default function PublicProfile() {
   }
 
   const name = profile.full_name || 'Anonymous';
+  const firstName = profile.full_name ? profile.full_name.split(' ')[0] : 'Them';
   const types = Array.isArray(profile.grief_types) ? profile.grief_types : [];
   const countryName = profile.country
     ? new Intl.DisplayNames(['en'], { type: 'region' }).of(profile.country) || profile.country
@@ -254,6 +275,48 @@ export default function PublicProfile() {
             <p style={{ margin: 0, fontSize: '0.95rem', color: '#334155', lineHeight: 1.5 }}>
               {profile.about}
             </p>
+          </div>
+        )}
+
+        {!isOwner && (
+          <div style={{ marginTop: '1.25rem', display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button
+              onClick={handleCall}
+              style={{
+                backgroundColor: '#3b82f6',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '0.6rem 1.25rem',
+                fontSize: '1rem',
+                fontWeight: '600',
+                cursor: 'pointer',
+                minWidth: '120px',
+              }}
+              onMouseOver={(e) => (e.currentTarget.style.backgroundColor = '#2563eb')}
+              onMouseOut={(e) => (e.currentTarget.style.backgroundColor = '#3b82f6')}
+            >
+              📞 Call
+            </button>
+
+            <button
+              onClick={handleMessage}
+              style={{
+                backgroundColor: '#10b981',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '0.6rem 1.25rem',
+                fontSize: '1rem',
+                fontWeight: '600',
+                cursor: 'pointer',
+                minWidth: '120px',
+              }}
+              onMouseOver={(e) => (e.currentTarget.style.backgroundColor = '#059669')}
+              onMouseOut={(e) => (e.currentTarget.style.backgroundColor = '#10b981')}
+            >
+              💬 Message {firstName}
+            </button>
           </div>
         )}
 
@@ -376,6 +439,16 @@ export default function PublicProfile() {
         </div>
       )}
 
+      {/* Message Overlay */}
+      {showMessageOverlay && profile && (
+        <SendMessageOverlay
+          isOpen={true}
+          targetUserId={profile.id}
+          targetName={profile.full_name || 'Anonymous'}
+          onClose={() => setShowMessageOverlay(false)}
+        />
+      )}
+
       <style jsx>{`
         .desktop-content {
           display: flex;
@@ -384,7 +457,7 @@ export default function PublicProfile() {
         }
         .posts-column {
           width: 60%;
-          min-width: 0; /* prevents overflow from long words */
+          min-width: 0;
         }
         .angels-column {
           width: 40%;

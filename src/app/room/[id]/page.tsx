@@ -413,80 +413,93 @@ export default function RoomPage() {
   }
 
   // PHONE CALL INTERFACE FOR ONE-ON-ONE
-  if (roomMeta.type === 'one-on-one') {
-    return (
+if (roomMeta.type === 'one-on-one') {
+  return (
+    <div style={{
+      height: '100dvh', // 👈 use dvh (dynamic viewport height) for mobile safety
+      display: 'flex',
+      flexDirection: 'column',
+      backgroundColor: '#0f172a'
+    }}>
+      {/* Header */}
       <div style={{ 
-        minHeight: '100vh', 
-        backgroundColor: '#0f172a',
-        display: 'flex',
-        flexDirection: 'column'
+        padding: '1.5rem',
+        textAlign: 'center',
+        borderBottom: '1px solid #334155',
+        flexShrink: 0 // 👈 never shrink
       }}>
+        <h1 style={{ 
+          fontSize: '1.875rem', 
+          fontWeight: '700', 
+          color: 'white',
+          marginBottom: '0.25rem'
+        }}>{roomMeta.title}</h1>
+        <p style={{ color: '#94a3b8', fontSize: '0.875rem' }}>One-on-one conversation</p>
+        
         <div style={{ 
-          paddingTop: '2.5rem', 
-          paddingBottom: '1rem',
-          padding: '1.5rem',
-          textAlign: 'center',
-          borderBottom: '1px solid #334155'
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center', 
+          gap: '0.5rem', 
+          marginTop: '0.5rem'
         }}>
-          <h1 style={{ 
-            fontSize: '1.875rem', 
-            fontWeight: '700', 
-            color: 'white',
-            marginBottom: '0.25rem'
-          }}>{roomMeta.title}</h1>
-          <p style={{ color: '#94a3b8', fontSize: '0.875rem' }}>One-on-one conversation</p>
-          
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'center', 
-            gap: '0.5rem', 
-            marginTop: '0.5rem'
+          <Timer style={{ width: '1.25rem', height: '1.25rem', color: '#10b981' }} />
+          <span style={{ 
+            color: '#10b981', 
+            fontFamily: 'monospace', 
+            fontSize: '1.125rem',
+            fontWeight: '600'
           }}>
-            <Timer style={{ width: '1.25rem', height: '1.25rem', color: '#10b981' }} />
-            <span style={{ 
-              color: '#10b981', 
-              fontFamily: 'monospace', 
-              fontSize: '1.125rem',
-              fontWeight: '600'
-            }}>
-              {formatTime(elapsedTime)}
-            </span>
-          </div>
+            {formatTime(elapsedTime)}
+          </span>
         </div>
+      </div>
 
+      {/* Main Content Area — THIS IS THE KEY */}
+      <div style={{
+        flex: 1,
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        overflow: 'hidden', // prevent overflow
+        position: 'relative'
+      }}>
         <LiveKitRoom
           token={token}
           serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
           audio={true}
           video={false}
           onDisconnected={() => setError('Disconnected from room')}
-          style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
+          style={{ 
+            width: '100%',
+            height: '100%',
+            display: 'flex',
+            flexDirection: 'column'
+          }}
         >
-          <div style={{ 
-            flex: 1, 
-            display: 'flex', 
-            flexDirection: 'column',
+          {/* Participant View — now safely centered in available space */}
+          <div style={{
+            flex: 1,
+            display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
-            padding: '1.5rem',
-            gap: '3rem'
+            gap: '3rem',
+            // No need for huge padding — space is already reserved by header/footer
           }}>
-            <PhoneCallParticipants hostId={roomMeta.hostId} />
+            <PhoneCallParticipants currentUserId={currentUserId!} />
           </div>
 
+          {/* Footer Controls */}
           <div style={{ 
             padding: '1.5rem',
             borderTop: '1px solid #334155',
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
-            gap: '2rem'
+            gap: '2rem',
+            flexShrink: 0 // 👈 critical: don't let this shrink or get overlapped
           }}>
-            {/* Mute Button - Bottom Left */}
             <MuteButton />
-            
-            {/* End Call Button - Centered */}
             <button
               onClick={handleLeave}
               style={{
@@ -511,8 +524,9 @@ export default function RoomPage() {
           <RoomAudioRenderer />
         </LiveKitRoom>
       </div>
-    );
-  }
+    </div>
+  );
+}
 
   // GROUP CALL INTERFACE (with inline CSS)
   return (
@@ -674,80 +688,52 @@ function MuteButton() {
 }
 
 // Phone call specific participant component (now only shows the other participant)
-function PhoneCallParticipants({ hostId }: { hostId: string }) {
+function PhoneCallParticipants({ currentUserId }: { currentUserId: string }) {
   const participants = useParticipants();
-  
-  // In one-on-one calls, we expect exactly 2 participants
+
   if (participants.length < 2) {
     return (
-      <div style={{ 
-        textAlign: 'center', 
-        color: '#94a3b8',
-        fontSize: '1.125rem'
-      }}>
+      <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '1.125rem' }}>
         Waiting for the other participant to join...
       </div>
     );
   }
 
-  // Get the other participant (not the current user/host)
-  const otherParticipant = participants.find(p => p.identity !== hostId) || participants[0];
-  
+  // Find the participant whose identity is NOT the current user
+  const otherParticipant = participants.find(p => p.identity !== currentUserId);
+
+  if (!otherParticipant) {
+    return <div>Unable to identify peer</div>;
+  }
+
   return (
-    <div style={{ 
-      display: 'flex', 
-      flexDirection: 'column', 
-      alignItems: 'center',
-      gap: '2.5rem'
-    }}>
-      {/* Show only the other participant */}
-      <div style={{ 
-        display: 'flex', 
-        flexDirection: 'column', 
-        alignItems: 'center'
-      }}>
-        <div style={{ 
-          width: '12rem',
-          height: '12rem',
-          borderRadius: '50%',
-          backgroundColor: otherParticipant.isSpeaking ? '#10b981' : '#334155',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          transition: 'background-color 0.3s',
-          marginBottom: '1rem',
-          border: otherParticipant.isSpeaking ? '3px solid #059669' : 'none'
-        }}>
-          <User style={{ 
-            width: '5rem', 
-            height: '5rem', 
-            color: 'white' 
-          }} />
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2.5rem' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <div
+          style={{
+            width: '12rem',
+            height: '12rem',
+            borderRadius: '50%',
+            backgroundColor: otherParticipant.isSpeaking ? '#10b981' : '#334155',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            transition: 'background-color 0.3s',
+            marginBottom: '1rem',
+            border: otherParticipant.isSpeaking ? '3px solid #059669' : 'none',
+          }}
+        >
+          <User style={{ width: '5rem', height: '5rem', color: 'white' }} />
         </div>
-        <div style={{ 
-          textAlign: 'center',
-          color: 'white',
-          fontSize: '1.25rem',
-          fontWeight: '600'
-        }}>
+        <div style={{ textAlign: 'center', color: 'white', fontSize: '1.25rem', fontWeight: '600' }}>
           {otherParticipant.name || 'Participant'}
           {otherParticipant.isSpeaking && (
-            <span style={{ 
-              display: 'block', 
-              color: '#10b981',
-              fontSize: '0.875rem',
-              marginTop: '0.25rem'
-            }}>
+            <span style={{ display: 'block', color: '#10b981', fontSize: '0.875rem', marginTop: '0.25rem' }}>
               Speaking
             </span>
           )}
           {!otherParticipant.isMicrophoneEnabled && (
-            <span style={{ 
-              display: 'block', 
-              color: '#f87171',
-              fontSize: '0.875rem',
-              marginTop: '0.25rem'
-            }}>
+            <span style={{ display: 'block', color: '#f87171', fontSize: '0.875rem', marginTop: '0.25rem' }}>
               Microphone off
             </span>
           )}
@@ -756,7 +742,6 @@ function PhoneCallParticipants({ hostId }: { hostId: string }) {
     </div>
   );
 }
-
 // Participant components for group calls
 function AudioParticipantsList({ hostId }: { hostId: string }) {
   const participants = useParticipants();
