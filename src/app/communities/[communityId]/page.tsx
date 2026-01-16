@@ -57,6 +57,7 @@ interface Post {
   id: string;
   content: string;
   media_url?: string | null;
+    media_urls?: string[] | null;
   created_at: string;
   user_id: string;
   username: string;
@@ -1084,20 +1085,34 @@ const removePostMedia = () => {
     );
   };
 
-  
+  const transformPostForCard = (post: Post) => {
+  // Keep griefTypes exactly as you had it — no changes
+ const validGriefTypes = [
+  'parent', 'child', 'spouse', 'sibling', 'friend',
+  'pet', 'miscarriage', 'caregiver', 'suicide', 'other'
+] as const;
 
-const transformPostForCard = (post: Post) => {
-  // Ensure griefTypes is always a valid GriefType[]
-  const griefType = community?.grief_type as 'parent' | 'child' | 'spouse' | 'sibling' | 'friend' | 'pet' | 'miscarriage' | 'caregiver' | 'suicide' | 'other' | undefined;
-  const griefTypes: ('parent' | 'child' | 'spouse' | 'sibling' | 'friend' | 'pet' | 'miscarriage' | 'caregiver' | 'suicide' | 'other')[] = 
-    griefType ? [griefType] : ['other'];
+type GriefType = typeof validGriefTypes[number];
+
+// Later...
+const griefType = community?.grief_type;
+const griefTypes: GriefType[] = 
+  (griefType && validGriefTypes.some(type => type === griefType))
+    ? [griefType as GriefType]
+    : ['other'];
+  // ✅ FIX MEDIA: Use post.media_urls if available, fallback to post.media_url
+  const mediaUrls = Array.isArray(post.media_urls) && post.media_urls.length > 0
+    ? post.media_urls.filter(Boolean)
+    : post.media_url
+      ? [post.media_url]
+      : [];
 
   return {
     id: post.id,
     userId: post.user_id,
     text: post.content,
-    mediaUrl: post.media_url || undefined,
-    mediaUrls: post.media_url ? [post.media_url] : [],
+    mediaUrl: mediaUrls[0] || undefined, // first item or undefined
+    mediaUrls, // ✅ now includes all uploaded images
     griefTypes,
     createdAt: new Date(post.created_at),
     likes: post.likes_count,
