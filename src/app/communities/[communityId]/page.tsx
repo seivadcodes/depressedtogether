@@ -112,6 +112,7 @@ interface CommunityPost {
   created_at: string;
   community_id: string;
   media_url: string | null;
+  media_urls: string[] | null; // 👈 added this line
   likes_count: number;
   comments_count: number;
   user_id: string;
@@ -473,24 +474,23 @@ export default function CommunityDetailPage() {
         });
 
         const postsWithLikes = postData.map((post: CommunityPost) => {
-          const userProfile = profilesMap.get(post.user_id) || {};
-          const isAnonymous = userProfile.is_anonymous || false;
-
-          return {
-            id: post.id,
-            content: post.content,
-            media_url: post.media_url,
-            created_at: post.created_at,
-            user_id: post.user_id,
-            username: isAnonymous ? 'Anonymous' : userProfile.full_name || 'Anonymous',
-            avatar_url: isAnonymous ? null : userProfile.avatar_url || null,
-            community_id: post.community_id,
-            likes_count: post.likes_count || 0,
-            comments_count: post.comments_count || 0,
-            is_liked: false,
-          };
-        });
-
+  const userProfile = profilesMap.get(post.user_id) || {};
+  const isAnonymous = userProfile.is_anonymous || false;
+  return {
+    id: post.id,
+    content: post.content,
+    media_url: post.media_url,
+    media_urls: post.media_urls, // ✅ now properly typed
+    created_at: post.created_at,
+    user_id: post.user_id,
+    username: isAnonymous ? 'Anonymous' : userProfile.full_name || 'Anonymous',
+    avatar_url: isAnonymous ? null : userProfile.avatar_url || null,
+    community_id: post.community_id,
+    likes_count: post.likes_count || 0,
+    comments_count: post.comments_count || 0,
+    is_liked: false,
+  };
+});
         // 9. Fetch like status if user is logged in
 
 

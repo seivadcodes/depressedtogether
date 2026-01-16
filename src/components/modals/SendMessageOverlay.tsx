@@ -2,13 +2,12 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import Picker from '@emoji-mart/react';
-import data from '@emoji-mart/data';
+import Picker, { Theme } from 'emoji-picker-react'; // ✅ Correct import
 import { useRouter } from 'next/navigation';
 
-// Type for emoji object
-interface EmojiMartEmoji {
-  native: string;
+// Type for emoji object from emoji-picker-react
+interface EmojiData {
+  emoji: string;
 }
 
 type Props = {
@@ -156,8 +155,9 @@ export default function SendMessageOverlay({
     }
   };
 
-  const handleEmojiSelect = (emoji: EmojiMartEmoji) => {
-    setMessage(prev => prev + emoji.native);
+  // ✅ Updated to match emoji-picker-react's signature
+  const handleEmojiSelect = (emojiData: EmojiData) => {
+    setMessage(prev => prev + emojiData.emoji);
     setShowEmoji(false);
     inputRef.current?.focus();
   };
@@ -165,7 +165,6 @@ export default function SendMessageOverlay({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Preview for images
       if (file.type.startsWith('image/')) {
         const reader = new FileReader();
         reader.onloadend = () => {
@@ -173,7 +172,6 @@ export default function SendMessageOverlay({
         };
         reader.readAsDataURL(file);
       } else {
-        // Show file name for non-images
         setFilePreview(file.name);
       }
     } else {
@@ -396,7 +394,7 @@ export default function SendMessageOverlay({
                         cursor: 'pointer'
                       }}
                       onChange={handleFileChange}
-                      accept="image/*,application/pdf,document/*"
+                      accept="image/*,application/pdf"
                     />
                     <button
                       type="button"
@@ -423,14 +421,13 @@ export default function SendMessageOverlay({
                       }}
                       aria-label="Attach file"
                     >
-                      {/* Paperclip SVG */}
                       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94A3 3 0 1 1 19.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 0 0 2.112 2.13" />
                       </svg>
                     </button>
                   </div>
                   
-                  {/* Emoji Button - Grey/Flat Design */}
+                  {/* Emoji Button - Gray/Flat Face (as requested) */}
                   <button
                     type="button"
                     onClick={() => setShowEmoji(!showEmoji)}
@@ -457,7 +454,7 @@ export default function SendMessageOverlay({
                     }}
                     aria-label="Open emoji picker"
                   >
-                    {/* Face Smile SVG - Grey/Flat Design */}
+                    {/* Gray flat face — preserved exactly as you like it */}
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <circle cx="12" cy="12" r="10" stroke="#64748b" />
                       <path stroke="#64748b" strokeLinecap="round" strokeLinejoin="round" d="M8 14s1.5 2 4 2 4-2 4-2" />
@@ -538,15 +535,12 @@ export default function SendMessageOverlay({
                     }}
                   >
                     <Picker
-                      data={data}
-                      onEmojiSelect={handleEmojiSelect}
-                      theme="light"
-                      set="twitter" // Twitter-style grey/flat emojis
-                      previewPosition="none"
-                      maxFrequentRows={0}
-                      navPosition="top"
-                      skinTonePosition="none"
-                      perLine={8}
+                      onEmojiClick={handleEmojiSelect}
+                      theme={Theme.LIGHT} // ✅ Correct usage
+                      skinTonesDisabled
+                      searchDisabled
+                      previewConfig={{ showPreview: false }}
+                      style={{ width: '100%', height: '100%' }}
                     />
                   </div>
                 )}

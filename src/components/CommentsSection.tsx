@@ -20,7 +20,7 @@ import {
 import Image from 'next/image';
 import { formatDistanceToNow } from 'date-fns';
 import ReportModal from '@/components/modals/ReportModal';
-import Picker from 'emoji-picker-react'; // ✅ Emoji picker
+import Picker, { Theme } from 'emoji-picker-react';
 
 interface Comment {
   id: string;
@@ -123,11 +123,11 @@ export function CommentsSection({
     const fetchCurrentAvatar = async () => {
       if (!currentUser.id) return;
       try {
-        const {  profileData, error } = await supabase
-          .from('profiles')
-          .select('avatar_url')
-          .eq('id', currentUser.id)
-          .single();
+        const { data: profileData, error } = await supabase
+  .from('profiles')
+  .select('avatar_url')
+  .eq('id', currentUser.id)
+  .single();
         if (error) {
           console.warn('Failed to fetch avatar:', error);
           setCurrentAvatar(null);
@@ -262,11 +262,11 @@ export function CommentsSection({
   const deleteComment = async (commentId: string) => {
     if (!confirm('Are you sure you want to delete this comment?')) return;
     try {
-      const {  allComments, error: fetchError } = await supabase
-        .from('comments')
-        .select('id, parent_comment_id')
-        .eq('parent_id', parentId)
-        .eq('parent_type', parentType);
+      const { data: allComments, error: fetchError } = await supabase
+  .from('comments')
+  .select('id, parent_comment_id')
+  .eq('parent_id', parentId)
+  .eq('parent_type', parentType);
       if (fetchError) throw fetchError;
       const getDescendantIds = (parentId: string): string[] => {
         const directChildren = allComments.filter(c => c.parent_comment_id === parentId);
@@ -692,11 +692,16 @@ export function CommentsSection({
     setIsSubmitting(true);
     setError(null);
     try {
-      const {  profileData } = await supabase
-        .from('profiles')
-        .select('full_name, avatar_url')
-        .eq('id', currentUser.id)
-        .single();
+      const { data: profileData, error: profileError } = await supabase
+  .from('profiles')
+  .select('full_name, avatar_url')
+  .eq('id', currentUser.id)
+  .single();
+
+if (profileError) {
+  console.warn('Failed to fetch profile:', profileError);
+  // handle fallback
+}
       const authorName = currentUser.isAnonymous
         ? 'Anonymous'
         : (profileData?.full_name || currentUser.fullName || 'Someone');
@@ -1527,14 +1532,14 @@ export function CommentsSection({
             </div>
             {showEmojiPicker && (
               <div style={{ marginTop: '8px' }}>
-                <Picker
-                  onEmojiClick={(emojiData) => insertEmoji(emojiData, 'top')}
-                  theme="light"
-                  skinTonesDisabled
-                  searchDisabled
-                  previewConfig={{ showPreview: false }}
-                  style={{ width: '100%' }}
-                />
+               <Picker
+  onEmojiClick={(emojiData) => insertEmoji(emojiData, 'top')}
+  theme={Theme.LIGHT} // ✅
+  skinTonesDisabled
+  searchDisabled
+  previewConfig={{ showPreview: false }}
+  style={{ width: '100%' }}
+/>
               </div>
             )}
             {error && (
@@ -1737,14 +1742,14 @@ function ReplyForm({
       </div>
       {showEmojiPicker && (
         <div>
-          <Picker
-            onEmojiClick={onEmojiClick}
-            theme="light"
-            skinTonesDisabled
-            searchDisabled
-            previewConfig={{ showPreview: false }}
-            style={{ width: '100%' }}
-          />
+         <Picker
+  onEmojiClick={onEmojiClick}
+  theme={Theme.LIGHT} // ✅
+  skinTonesDisabled
+  searchDisabled
+  previewConfig={{ showPreview: false }}
+  style={{ width: '100%' }}
+/>
         </div>
       )}
     </div>

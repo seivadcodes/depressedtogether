@@ -4,8 +4,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
-import Picker from '@emoji-mart/react';
-import data from '@emoji-mart/data';
+import Picker, { Theme } from 'emoji-picker-react';
 import { toast } from 'react-hot-toast';
 import CallOverlay from '@/components/calling/CallOverlay';
 import Image from 'next/image';
@@ -49,12 +48,7 @@ type Message = {
   reactions?: Record<string, string[]>; // New: reactions tracking
 };
 
-interface EmojiMartEmoji {
-  native: string;
-  id: string;
-  name?: string;
-  unified?: string;
-}
+
 
 // Helper functions
 const getInitials = (name: string | null | undefined): string => {
@@ -1390,11 +1384,16 @@ avatar_url
     }
   };
 
-  const handleEmojiSelect = (emoji: EmojiMartEmoji) => {
-    setNewMessage((prev) => prev + emoji.native);
-    setShowEmojiPicker(false);
-    messageInputRef.current?.focus();
-  };
+  // Define the correct type (or just use inline)
+interface EmojiData {
+  emoji: string;
+}
+
+const handleEmojiSelect = (emojiData: EmojiData) => {
+  setNewMessage((prev) => prev + emojiData.emoji); // 👈 .emoji, not .native
+  setShowEmojiPicker(false);
+  messageInputRef.current?.focus();
+};
   const handleCallUser = async () => {
     if (!selectedConversation || !currentUserId) {
       toast.error('Unable to start call');
@@ -2218,34 +2217,35 @@ avatar_url
             </button>
           </div>
 
-          {/* Emoji Picker */}
-          {showEmojiPicker && (
-            <div
-              className="emoji-picker-container"
-              style={{
-                position: 'absolute',
-                bottom: '60px',
-                left: '0',
-                width: '100%',
-                zIndex: 100,
-                boxShadow: '0 -5px 20px rgba(0,0,0,0.1)',
-                borderRadius: '12px 12px 0 0',
-                overflow: 'hidden'
-              }}
-            >
-              <Picker
-                data={data}
-                onEmojiSelect={handleEmojiSelect}
-                theme="light"
-                previewPosition="none"
-                set="twitter"
-                maxFrequentRows={0}
-                navPosition="none"
-                skinTonePosition="none"
-                perLine={8}
-              />
-            </div>
-          )}
+         {/* Emoji Picker */}
+{showEmojiPicker && (
+  <div
+    className="emoji-picker-container"
+    style={{
+      position: 'absolute',
+      bottom: '70px',
+      left: '50px',
+      zIndex: 100,
+      boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
+      borderRadius: '12px',
+      overflow: 'hidden',
+      // 👇 Light theme via CSS variables (for @emoji-mart/react v4+)
+      '--rgb-bg': '255, 255, 255',
+      '--rgb-color': '30, 41, 59',
+      '--rgb-color-border': '226, 232, 240',
+      colorScheme: 'light',
+    } as React.CSSProperties}
+  >
+    <Picker
+  onEmojiClick={handleEmojiSelect} // 👈 note: onEmojiClick, not onEmojiSelect
+  theme={Theme.LIGHT}
+  skinTonesDisabled
+  searchDisabled
+  previewConfig={{ showPreview: false }}
+  style={{ width: '100%', height: '300px' }}
+/>
+  </div>
+)}
         </form>
       </div>
     );
@@ -3480,14 +3480,13 @@ avatar_url
                         }}
                       >
                         <Picker
-                          data={data}
-                          onEmojiSelect={handleEmojiSelect}
-                          set="twitter"
-                          theme="light"
-                          previewPosition="none"
-                          maxFrequentRows={0}
-                          navPosition="none"
-                        />
+  onEmojiClick={handleEmojiSelect}
+  theme={Theme.LIGHT}
+  skinTonesDisabled
+  searchDisabled
+  previewConfig={{ showPreview: false }}
+  style={{ width: '100%', height: '300px' }}
+/>
                       </div>
                     )}
                   </form>
