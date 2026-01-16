@@ -3,22 +3,24 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase';
 import { v4 as uuidv4 } from 'uuid';
-import { 
-  Heart, 
-  Send, 
-  MessageCircle, 
-  X, 
-  ChevronDown, 
-  ChevronUp, 
+import {
+  Heart,
+  Send,
+  MessageCircle,
+  X,
+  ChevronDown,
+  ChevronUp,
   ArrowUpDown,
   Edit,
   Flag,
   Loader2,
   Trash2,
+  Smile,
 } from 'lucide-react';
 import Image from 'next/image';
 import { formatDistanceToNow } from 'date-fns';
-import ReportModal from '@/components/modals/ReportModal'; // ✅ Import report modal
+import ReportModal from '@/components/modals/ReportModal';
+import Picker from 'emoji-picker-react'; // ✅ Emoji picker
 
 interface Comment {
   id: string;
@@ -58,7 +60,7 @@ const MOBILE_BREAKPOINT = 768;
 export function CommentsSection({
   parentId,
   parentType,
-  currentUser
+  currentUser,
 }: CommentsSectionProps) {
   const supabase = createClient();
   const [comments, setComments] = useState<CommentThread[]>([]);
@@ -72,27 +74,27 @@ export function CommentsSection({
   const [windowWidth, setWindowWidth] = useState(0);
   const [isExpanded, setIsExpanded] = useState(false);
   const [expandedReplies, setExpandedReplies] = useState<Record<string, boolean>>({});
-  
-  // ✅ NEW: Editing state
+
+  // ✅ NEW: Editing & Reporting states
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editedContent, setEditedContent] = useState<string>('');
   const [isUpdating, setIsUpdating] = useState(false);
-  
-  // ✅ NEW: Reporting state
   const [reportingCommentId, setReportingCommentId] = useState<string | null>(null);
   const [openCommentMenu, setOpenCommentMenu] = useState<string | null>(null);
   const commentMenuRef = useRef<HTMLDivElement>(null);
 
-  // ✅ NEW: Always fetch current avatar from DB
+  // Avatar & post like state
   const [currentAvatar, setCurrentAvatar] = useState<string | null>(null);
-  
-  // Post like state
   const [postLikesCount, setPostLikesCount] = useState(0);
   const [postIsLiked, setPostIsLiked] = useState(false);
   const [isPostLikeLoading, setIsPostLikeLoading] = useState(false);
-  
+
   // Sort control
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
+
+  // ✅ Emoji picker visibility
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showReplyEmojiPickers, setShowReplyEmojiPickers] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
@@ -116,12 +118,12 @@ export function CommentsSection({
     };
   }, [openCommentMenu]);
 
-  // Fetch current user avatar on mount and keep it fresh
+  // Fetch current user avatar
   useEffect(() => {
     const fetchCurrentAvatar = async () => {
       if (!currentUser.id) return;
       try {
-        const { data: profileData, error } = await supabase
+        const {  profileData, error } = await supabase
           .from('profiles')
           .select('avatar_url')
           .eq('id', currentUser.id)
@@ -140,51 +142,45 @@ export function CommentsSection({
     fetchCurrentAvatar();
   }, [currentUser.id, supabase]);
 
+  // Post like logic
   const loadPostLikeState = useCallback(async () => {
-  if (!currentUser.id) {
-    setPostLikesCount(0);
-    setPostIsLiked(false);
-    return;
-  }
-
-  try {
-    // Count total likes for this post
-    const { count, error: countError } = await supabase
-      .from('likes')
-      .select('*', { count: 'exact', head: true })
-      .eq('target_type', parentType)
-      .eq('target_id', parentId);
-
-    if (!countError && count !== null) {
-      setPostLikesCount(count);
+    if (!currentUser.id) {
+      setPostLikesCount(0);
+      setPostIsLiked(false);
+      return;
     }
-
-    // Check if current user liked it
-   const { data, error: likeError } = await supabase
-  .from('likes')
-  .select('id')
-  .eq('target_type', parentType)
-  .eq('target_id', parentId)
-  .eq('user_id', currentUser.id)
-  .maybeSingle(); // ← Use maybeSingle here too
-
-setPostIsLiked(!!data && !likeError);
-  } catch (err) {
-    console.error('Failed to load post like state:', err);
-  }
-}, [parentId, parentType, currentUser.id, supabase]);
+    try {
+      const { count, error: countError } = await supabase
+        .from('likes')
+        .select('*', { count: 'exact', head: true })
+        .eq('target_type', parentType)
+        .eq('target_id', parentId);
+      if (!countError && count !== null) {
+        setPostLikesCount(count);
+      }
+      const { data, error: likeError } = await supabase
+        .from('likes')
+        .select('id')
+        .eq('target_type', parentType)
+        .eq('target_id', parentId)
+        .eq('user_id', currentUser.id)
+        .maybeSingle();
+      setPostIsLiked(!!data && !likeError);
+    } catch (err) {
+      console.error('Failed to load post like state:', err);
+    }
+  }, [parentId, parentType, currentUser.id, supabase]);
 
   const checkIfUserLiked = async (commentId: string): Promise<boolean> => {
-  if (!currentUser.id) return false;
-  const { data, error } = await supabase
-    .from('comment_likes')
-    .select('id')
-    .eq('comment_id', commentId)
-    .eq('user_id', currentUser.id)
-    .maybeSingle(); // ← This returns null instead of throwing on 0 rows
-
-  return !error && !!data;
-};
+    if (!currentUser.id) return false;
+    const { data, error } = await supabase
+      .from('comment_likes')
+      .select('id')
+      .eq('comment_id', commentId)
+      .eq('user_id', currentUser.id)
+      .maybeSingle();
+    return !error && !!data;
+  };
 
   const toggleCommentLike = async (commentId: string, currentlyLiked: boolean) => {
     if (!currentUser.id) return;
@@ -204,53 +200,43 @@ setPostIsLiked(!!data && !likeError);
   };
 
   const togglePostLike = async () => {
-  if (!currentUser.id) return;
-
-  setIsPostLikeLoading(true);
-  const previousIsLiked = postIsLiked;
-  const previousLikesCount = postLikesCount;
-
-  // Optimistic UI update
-  setPostIsLiked(!previousIsLiked);
-  setPostLikesCount(previousIsLiked ? Math.max(0, previousLikesCount - 1) : previousLikesCount + 1);
-
-  try {
-    if (previousIsLiked) {
-      // Unlike: delete from `likes`
-      const { error } = await supabase
-        .from('likes')
-        .delete()
-        .eq('target_type', parentType)
-        .eq('target_id', parentId)
-        .eq('user_id', currentUser.id);
-
-      if (error) throw error;
-    } else {
-      // Like: insert into `likes`
-      const { error } = await supabase
-        .from('likes')
-        .insert({
-          target_type: parentType,
-          target_id: parentId,
-          user_id: currentUser.id,
-        });
-
-      if (error) throw error;
+    if (!currentUser.id) return;
+    setIsPostLikeLoading(true);
+    const previousIsLiked = postIsLiked;
+    const previousLikesCount = postLikesCount;
+    setPostIsLiked(!previousIsLiked);
+    setPostLikesCount(previousIsLiked ? Math.max(0, previousLikesCount - 1) : previousLikesCount + 1);
+    try {
+      if (previousIsLiked) {
+        const { error } = await supabase
+          .from('likes')
+          .delete()
+          .eq('target_type', parentType)
+          .eq('target_id', parentId)
+          .eq('user_id', currentUser.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('likes')
+          .insert({
+            target_type: parentType,
+            target_id: parentId,
+            user_id: currentUser.id,
+          });
+        if (error) throw error;
+      }
+    } catch (err) {
+      console.error('Post like toggle failed:', err);
+      setPostIsLiked(previousIsLiked);
+      setPostLikesCount(previousLikesCount);
+    } finally {
+      setIsPostLikeLoading(false);
     }
-  } catch (err) {
-    console.error('Post like toggle failed:', err);
-    // Revert optimistic update
-    setPostIsLiked(previousIsLiked);
-    setPostLikesCount(previousLikesCount);
-  } finally {
-    setIsPostLikeLoading(false);
-  }
-};
+  };
 
-  // ✅ NEW: Edit comment function
+  // ✅ Edit/Delete functions (unchanged for brevity — kept as in original)
   const editComment = async (commentId: string, newContent: string) => {
     if (!currentUser.id || !newContent.trim()) return;
-    
     setIsUpdating(true);
     try {
       const { error } = await supabase
@@ -258,15 +244,11 @@ setPostIsLiked(!!data && !likeError);
         .update({ content: newContent.trim() })
         .eq('id', commentId)
         .eq('user_id', currentUser.id);
-      
       if (error) throw error;
-      
-      // Update local state
       setComments(prev => updateCommentInTree(prev, {
         ...findCommentInTree(prev, commentId)!,
         content: newContent.trim()
       }));
-      
       setEditingCommentId(null);
       setEditedContent('');
     } catch (err) {
@@ -277,20 +259,15 @@ setPostIsLiked(!!data && !likeError);
     }
   };
 
-  // ✅ NEW: Delete comment function (with confirmation)
   const deleteComment = async (commentId: string) => {
     if (!confirm('Are you sure you want to delete this comment?')) return;
-    
     try {
-      // Get all descendant IDs for deletion
-      const { data: allComments, error: fetchError } = await supabase
+      const {  allComments, error: fetchError } = await supabase
         .from('comments')
         .select('id, parent_comment_id')
         .eq('parent_id', parentId)
         .eq('parent_type', parentType);
-      
       if (fetchError) throw fetchError;
-      
       const getDescendantIds = (parentId: string): string[] => {
         const directChildren = allComments.filter(c => c.parent_comment_id === parentId);
         return [
@@ -298,19 +275,13 @@ setPostIsLiked(!!data && !likeError);
           ...directChildren.flatMap(c => getDescendantIds(c.id))
         ];
       };
-      
       const descendantIds = getDescendantIds(commentId);
       const idsToDelete = [commentId, ...descendantIds];
-      
-      // Delete from DB
       const { error: deleteError } = await supabase
         .from('comments')
         .delete()
         .in('id', idsToDelete);
-      
       if (deleteError) throw deleteError;
-      
-      // Update local state
       setComments(prev => removeCommentFromTree(prev, commentId));
     } catch (err) {
       console.error('Error deleting comment:', err);
@@ -318,7 +289,6 @@ setPostIsLiked(!!data && !likeError);
     }
   };
 
-  // Helper to find a comment in the tree
   const findCommentInTree = (threads: CommentThread[], id: string): Comment | null => {
     for (const thread of threads) {
       if (thread.comment.id === id) return thread.comment;
@@ -328,7 +298,6 @@ setPostIsLiked(!!data && !likeError);
     return null;
   };
 
-  // Helper to remove comment and descendants
   const removeCommentFromTree = (threads: CommentThread[], id: string): CommentThread[] => {
     return threads
       .filter(thread => thread.comment.id !== id)
@@ -417,72 +386,69 @@ setPostIsLiked(!!data && !likeError);
     }
   }, [parentId, parentType, currentUser.id, sortOrder]);
 
- useEffect(() => {
-  loadPostLikeState();
-  loadComments();
+  useEffect(() => {
+    loadPostLikeState();
+    loadComments();
 
-  // ✅ Realtime channel for likes on the parent (post, community_post, etc.)
-  const likeChannel = supabase
-    .channel(`likes-${parentType}-${parentId}`)
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'likes',
-        filter: `target_type=eq.${parentType},target_id=eq.${parentId}`
-      },
-      () => {
-        loadPostLikeState(); // Re-fetch like count & user like status
-      }
-    )
-    .subscribe();
-
-  // ✅ Realtime channel for comments under this parent
-  const commentChannel = supabase
-    .channel(`comments-${parentId}`)
-    .on(
-      'postgres_changes',
-      {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'comments',
-        filter: `parent_id=eq.${parentId},is_deleted=is.false`
-      },
-      async (payload) => {
-        const newComment = payload.new as Comment;
-        if (newComment.user_id !== currentUser.id) {
-          handleNewComment({ ...newComment, is_liked: false });
+    const likeChannel = supabase
+      .channel(`likes-${parentType}-${parentId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'likes',
+          filter: `target_type=eq.${parentType},target_id=eq.${parentId}`
+        },
+        () => {
+          loadPostLikeState();
         }
-      }
-    )
-    .on(
-      'postgres_changes',
-      {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'comments',
-        filter: `parent_id=eq.${parentId}`
-      },
-      (payload) => {
-        const updatedComment = payload.new as Comment;
-        if (updatedComment.is_deleted) {
-          setComments(prev => removeCommentFromTree(prev, updatedComment.id));
-        } else {
-          // Note: we don't refetch like state here — likes are handled via separate channel
-          setComments(prev => updateCommentInTree(prev, { ...updatedComment, is_liked: false }));
-        }
-      }
-    )
-    .subscribe();
+      )
+      .subscribe();
 
-  // ✅ Cleanup: unsubscribe from the channels you actually created
-  return () => {
-    supabase.removeChannel(likeChannel);
-    supabase.removeChannel(commentChannel);
-  };
-}, [parentId, parentType, loadComments, loadPostLikeState, currentUser.id, supabase]);
-  // --- Helper functions ---
+    const commentChannel = supabase
+      .channel(`comments-${parentId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'comments',
+          filter: `parent_id=eq.${parentId},is_deleted=is.false`
+        },
+        async (payload) => {
+          const newComment = payload.new as Comment;
+          if (newComment.user_id !== currentUser.id) {
+            handleNewComment({ ...newComment, is_liked: false });
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'comments',
+          filter: `parent_id=eq.${parentId}`
+        },
+        (payload) => {
+          const updatedComment = payload.new as Comment;
+          if (updatedComment.is_deleted) {
+            setComments(prev => removeCommentFromTree(prev, updatedComment.id));
+          } else {
+            setComments(prev => updateCommentInTree(prev, { ...updatedComment, is_liked: false }));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(likeChannel);
+      supabase.removeChannel(commentChannel);
+    };
+  }, [parentId, parentType, loadComments, loadPostLikeState, currentUser.id, supabase]);
+
+  // --- Helper functions (mostly unchanged) ---
   const updateCommentInTree = (
     threads: CommentThread[],
     updated: Comment
@@ -496,15 +462,6 @@ setPostIsLiked(!!data && !likeError);
         replies: updateCommentInTree(thread.replies, updated)
       };
     });
-  };
-
-  const removeComment = (threads: CommentThread[], id: string): CommentThread[] => {
-    return threads
-      .filter(thread => thread.comment.id !== id)
-      .map(thread => ({
-        ...thread,
-        replies: removeComment(thread.replies, id)
-      }));
   };
 
   const handleNewComment = (comment: Comment) => {
@@ -735,8 +692,7 @@ setPostIsLiked(!!data && !likeError);
     setIsSubmitting(true);
     setError(null);
     try {
-      // 🔁 Fetch fresh profile (including avatar) at submit time too
-      const { data: profileData } = await supabase
+      const {  profileData } = await supabase
         .from('profiles')
         .select('full_name, avatar_url')
         .eq('id', currentUser.id)
@@ -761,19 +717,19 @@ setPostIsLiked(!!data && !likeError);
         replies_count: 0,
         is_liked: false,
       };
-      // Optimistic UI
       if (replyToCommentId) {
         addReplyOptimistically(replyToCommentId, newCommentObj);
         setReplyTexts(prev => ({ ...prev, [replyToCommentId]: '' }));
         setActiveReplyId(null);
+        setShowReplyEmojiPickers(prev => ({ ...prev, [replyToCommentId]: false }));
       } else {
         addTopLevelCommentOptimistically(newCommentObj);
         setNewTopLevelComment('');
+        setShowEmojiPicker(false);
       }
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
       }
-      // Save to DB
       const { error } = await supabase
         .from('comments')
         .insert({
@@ -863,6 +819,17 @@ setPostIsLiked(!!data && !likeError);
     );
   };
 
+  const insertEmoji = (emojiData: { emoji: string }, target: 'top' | string) => {
+    if (target === 'top') {
+      setNewTopLevelComment(prev => prev + emojiData.emoji);
+    } else {
+      setReplyTexts(prev => ({
+        ...prev,
+        [target]: (prev[target] || '') + emojiData.emoji
+      }));
+    }
+  };
+
   const renderComment = (thread: CommentThread, depth = 0) => {
     const { comment, replies } = thread;
     const isMobile = windowWidth < MOBILE_BREAKPOINT;
@@ -934,8 +901,6 @@ setPostIsLiked(!!data && !likeError);
                   }}>
                     {formatDistanceToNow(new Date(comment.created_at), { addSuffix: true })}
                   </span>
-                  
-                  {/* ✅ Comment menu (edit/delete/report) */}
                   {currentUser.id && (
                     <div ref={commentMenuRef} style={{ position: 'relative' }}>
                       <button
@@ -955,7 +920,6 @@ setPostIsLiked(!!data && !likeError);
                       >
                         <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>⋯</span>
                       </button>
-                      
                       {isMenuOpen && (
                         <div
                           style={{
@@ -997,34 +961,29 @@ setPostIsLiked(!!data && !likeError);
                               Edit
                             </button>
                           )}
-                          
-                          {(isAuthor || !isAuthor) && (
-                            <button
- onClick={(e) => {
-  e.stopPropagation();
-  setReportingCommentId(comment.id);
-  // Defer closing the menu to next tick
-  setTimeout(() => setOpenCommentMenu(null), 0);
-}}
-  style={{
-    width: '100%',
-    textAlign: 'left',
-    padding: '8px 12px',
-    background: 'none',
-    border: 'none',
-    color: '#F59E0B',
-    cursor: 'pointer',
-    fontSize: '0.875rem',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px'
-  }}
->
-  <Flag size={14} />
-  Report
-</button>
-                          )}
-                          
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setReportingCommentId(comment.id);
+                              setTimeout(() => setOpenCommentMenu(null), 0);
+                            }}
+                            style={{
+                              width: '100%',
+                              textAlign: 'left',
+                              padding: '8px 12px',
+                              background: 'none',
+                              border: 'none',
+                              color: '#F59E0B',
+                              cursor: 'pointer',
+                              fontSize: '0.875rem',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px'
+                            }}
+                          >
+                            <Flag size={14} />
+                            Report
+                          </button>
                           {isAuthor && (
                             <button
                               onClick={async (e) => {
@@ -1056,8 +1015,6 @@ setPostIsLiked(!!data && !likeError);
                   )}
                 </div>
               </div>
-              
-              {/* ✅ Edit form */}
               {editingCommentId === comment.id ? (
                 <div style={{ marginTop: '8px' }}>
                   <textarea
@@ -1074,11 +1031,11 @@ setPostIsLiked(!!data && !likeError);
                     }}
                     maxLength={500}
                   />
-                  <div style={{ 
-                    display: 'flex', 
-                    justifyContent: 'flex-end', 
-                    gap: '8px', 
-                    marginTop: '8px' 
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'flex-end',
+                    gap: '8px',
+                    marginTop: '8px'
                   }}>
                     <button
                       onClick={() => {
@@ -1111,16 +1068,7 @@ setPostIsLiked(!!data && !likeError);
                         cursor: isUpdating || !editedContent.trim() ? 'not-allowed' : 'pointer'
                       }}
                     >
-                      {isUpdating ? (
-                        <div style={{
-                          width: '16px',
-                          height: '16px',
-                          border: '2px solid rgba(255,255,255,0.5)',
-                          borderTopColor: 'white',
-                          borderRadius: '50%',
-                          animation: 'spin 0.8s linear infinite'
-                        }} />
-                      ) : 'Update'}
+                      {isUpdating ? <Loader2 size={14} className="animate-spin" /> : 'Update'}
                     </button>
                   </div>
                 </div>
@@ -1135,7 +1083,6 @@ setPostIsLiked(!!data && !likeError);
                 </p>
               )}
             </div>
-            
             {!editingCommentId && (
               <div style={{
                 display: 'flex',
@@ -1215,7 +1162,6 @@ setPostIsLiked(!!data && !likeError);
                 )}
               </div>
             )}
-            
             {isReplyOpen && (
               <div style={{ marginTop: '12px', paddingLeft: '8px' }}>
                 <ReplyForm
@@ -1228,10 +1174,17 @@ setPostIsLiked(!!data && !likeError);
                     avatarUrl: currentAvatar ?? undefined
                   }}
                   isMobile={windowWidth < MOBILE_BREAKPOINT}
+                  onEmojiClick={(emojiData) => insertEmoji(emojiData, comment.id)}
+                  showEmojiPicker={showReplyEmojiPickers[comment.id] || false}
+                  toggleEmojiPicker={() =>
+                    setShowReplyEmojiPickers(prev => ({
+                      ...prev,
+                      [comment.id]: !(prev[comment.id] || false)
+                    }))
+                  }
                 />
               </div>
             )}
-            
             {areRepliesExpanded && replies.length > 0 && (
               <div style={{ marginTop: '12px', borderLeft: '2px solid #E5E7EB', paddingLeft: '16px' }}>
                 {replies.map(childThread => renderComment(childThread, depth + 1))}
@@ -1264,7 +1217,6 @@ setPostIsLiked(!!data && !likeError);
     );
   }
 
-  // Collapsed preview mode
   if (!isExpanded) {
     return (
       <div
@@ -1281,7 +1233,6 @@ setPostIsLiked(!!data && !likeError);
           marginBottom: '8px'
         }}>
           <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-            {/* Likes */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -1312,7 +1263,6 @@ setPostIsLiked(!!data && !likeError);
               />
               <span>{postLikesCount}</span>
             </button>
-            {/* Comments */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -1354,10 +1304,8 @@ setPostIsLiked(!!data && !likeError);
     );
   }
 
-  // Expanded view
   return (
     <div style={{ marginTop: '24px' }}>
-      {/* Header */}
       <div
         style={{
           display: 'flex',
@@ -1367,7 +1315,6 @@ setPostIsLiked(!!data && !likeError);
         }}
       >
         <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-          {/* Likes */}
           <button
             onClick={togglePostLike}
             disabled={isPostLikeLoading}
@@ -1395,7 +1342,6 @@ setPostIsLiked(!!data && !likeError);
             />
             <span>{postLikesCount}</span>
           </button>
-          {/* Comments count */}
           <button
             onClick={() => setIsExpanded(false)}
             style={{
@@ -1419,7 +1365,6 @@ setPostIsLiked(!!data && !likeError);
             <span>{topLevelCommentCount}</span>
           </button>
         </div>
-        {/* Sort Toggle */}
         <button
           onClick={() => setSortOrder(sortOrder === 'newest' ? 'oldest' : 'newest')}
           style={{
@@ -1442,7 +1387,7 @@ setPostIsLiked(!!data && !likeError);
           <span>{sortOrder === 'newest' ? 'Newest' : 'Oldest'}</span>
         </button>
       </div>
-      
+
       {/* Main Comment Form */}
       <div style={{ marginBottom: '24px' }}>
         <div style={{ display: 'flex', gap: '12px' }}>
@@ -1500,35 +1445,98 @@ setPostIsLiked(!!data && !likeError);
             )}
           </div>
           <div style={{ flex: 1 }}>
-            <textarea
-              ref={textareaRef}
-              value={newTopLevelComment}
-              onChange={(e) => {
-                setNewTopLevelComment(e.target.value);
-                e.target.style.height = 'auto';
-                e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
-              }}
-              onKeyPress={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSubmit();
-                }
-              }}
-              placeholder="Add a comment..."
-              style={{
-                width: '100%',
-                padding: '12px 16px',
-                border: '1px solid #D1D5DB',
-                borderRadius: '12px',
-                fontSize: '0.875rem',
-                resize: 'none',
-                minHeight: '48px',
-                transition: 'border-color 0.2s',
-                boxSizing: 'border-box'
-              }}
-              onFocus={(e) => (e.currentTarget.style.borderColor = '#F59E0B')}
-              onBlur={(e) => (e.currentTarget.style.borderColor = '#D1D5DB')}
-            />
+            <div style={{ position: 'relative' }}>
+              <textarea
+                ref={textareaRef}
+                value={newTopLevelComment}
+                onChange={(e) => {
+                  setNewTopLevelComment(e.target.value);
+                  e.target.style.height = 'auto';
+                  e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
+                }}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSubmit();
+                  }
+                }}
+                placeholder="Add a comment..."
+                style={{
+                  width: '100%',
+                  padding: '12px 48px 12px 16px',
+                  border: '1px solid #D1D5DB',
+                  borderRadius: '12px',
+                  fontSize: '0.875rem',
+                  resize: 'none',
+                  minHeight: '48px',
+                  transition: 'border-color 0.2s',
+                  boxSizing: 'border-box'
+                }}
+                onFocus={(e) => (e.currentTarget.style.borderColor = '#F59E0B')}
+                onBlur={(e) => (e.currentTarget.style.borderColor = '#D1D5DB')}
+              />
+              <button
+                type="button"
+                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                style={{
+                  position: 'absolute',
+                  right: '48px',
+                  bottom: '12px',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#6B7280'
+                }}
+                aria-label="Open emoji picker"
+              >
+                <Smile size={18} />
+              </button>
+              <button
+                onClick={() => handleSubmit()}
+                disabled={!newTopLevelComment.trim() || isSubmitting}
+                style={{
+                  position: 'absolute',
+                  right: '12px',
+                  bottom: '12px',
+                  width: '28px',
+                  height: '28px',
+                  borderRadius: '8px',
+                  backgroundColor: !newTopLevelComment.trim() || isSubmitting ? '#E5E7EB' : '#F59E0B',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: 'none',
+                  cursor: !newTopLevelComment.trim() || isSubmitting ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {isSubmitting ? (
+                  <div
+                    style={{
+                      width: '14px',
+                      height: '14px',
+                      border: '1.5px solid rgba(255,255,255,0.5)',
+                      borderTopColor: 'white',
+                      borderRadius: '50%',
+                      animation: 'spin 0.8s linear infinite'
+                    }}
+                  />
+                ) : (
+                  <Send size={14} color={!newTopLevelComment.trim() ? '#9CA3AF' : '#FFFFFF'} style={{ strokeWidth: 1.5 }} />
+                )}
+              </button>
+            </div>
+            {showEmojiPicker && (
+              <div style={{ marginTop: '8px' }}>
+                <Picker
+                  onEmojiClick={(emojiData) => insertEmoji(emojiData, 'top')}
+                  theme="light"
+                  skinTonesDisabled
+                  searchDisabled
+                  previewConfig={{ showPreview: false }}
+                  style={{ width: '100%' }}
+                />
+              </div>
+            )}
             {error && (
               <div
                 style={{
@@ -1544,51 +1552,10 @@ setPostIsLiked(!!data && !likeError);
                 {error}
               </div>
             )}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '12px' }}>
-              <button
-                onClick={() => handleSubmit()}
-                disabled={!newTopLevelComment.trim() || isSubmitting}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: windowWidth < MOBILE_BREAKPOINT ? '8px' : '8px 16px',
-                  backgroundColor: !newTopLevelComment.trim() || isSubmitting ? '#E5E7EB' : '#F59E0B',
-                  color: !newTopLevelComment.trim() || isSubmitting ? '#9CA3AF' : '#FFFFFF',
-                  border: 'none',
-                  borderRadius: '8px',
-                  fontWeight: 500,
-                  fontSize: '0.875rem',
-                  cursor: !newTopLevelComment.trim() || isSubmitting ? 'not-allowed' : 'pointer',
-                  transition: 'all 0.2s'
-                }}
-              >
-                {isSubmitting ? (
-                  <div
-                    style={{
-                      width: '16px',
-                      height: '16px',
-                      border: '2px solid rgba(255,255,255,0.5)',
-                      borderTopColor: 'white',
-                      borderRadius: '50%',
-                      animation: 'spin 0.8s linear infinite'
-                    }}
-                  />
-                ) : windowWidth < MOBILE_BREAKPOINT ? (
-                  <Send size={18} style={{ strokeWidth: 1.5 }} />
-                ) : (
-                  <>
-                    <span>Comment</span>
-                    <Send size={16} style={{ strokeWidth: 1.5 }} />
-                  </>
-                )}
-              </button>
-            </div>
           </div>
         </div>
       </div>
-      
-      {/* Full Comments List */}
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         {comments.map((thread) => renderComment(thread))}
         {comments.length === 0 && (
@@ -1604,8 +1571,7 @@ setPostIsLiked(!!data && !likeError);
           </div>
         )}
       </div>
-      
-      {/* ✅ Report Modal */}
+
       <ReportModal
         isOpen={!!reportingCommentId}
         onClose={() => setReportingCommentId(null)}
@@ -1613,7 +1579,7 @@ setPostIsLiked(!!data && !likeError);
         targetType="comment"
         currentUserId={currentUser.id}
       />
-      
+
       <style jsx global>{`
         @keyframes spin {
           to {
@@ -1631,7 +1597,10 @@ function ReplyForm({
   onChange,
   isSubmitting,
   currentUser,
-  isMobile
+  isMobile,
+  onEmojiClick,
+  showEmojiPicker,
+  toggleEmojiPicker
 }: {
   onSubmit: () => void;
   value: string;
@@ -1639,116 +1608,145 @@ function ReplyForm({
   isSubmitting: boolean;
   currentUser: CommentsSectionProps['currentUser'];
   isMobile: boolean;
+  onEmojiClick: (emojiData: { emoji: string }) => void;
+  showEmojiPicker: boolean;
+  toggleEmojiPicker: () => void;
 }) {
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSubmit();
-  };
   return (
-    <form onSubmit={handleSubmit} style={{ display: 'flex', gap: '12px' }}>
-      <div style={{ flexShrink: 0, marginTop: '3px' }}>
-        {currentUser.isAnonymous ? (
-          <div style={{
-            width: '28px',
-            height: '28px',
-            borderRadius: '9999px',
-            backgroundColor: '#FEF3C7',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
-            <span style={{ color: '#92400E', fontWeight: 600, fontSize: '0.75rem' }}>A</span>
-          </div>
-        ) : currentUser.avatarUrl ? (
-          <div style={{
-            width: '28px',
-            height: '28px',
-            borderRadius: '9999px',
-            overflow: 'hidden'
-          }}>
-            <Image
-              src={currentUser.avatarUrl}
-              alt="Your avatar"
-              width={28}
-              height={28}
-              style={{ objectFit: 'cover', width: '100%', height: '100%' }}
-            />
-          </div>
-        ) : (
-          <div style={{
-            width: '28px',
-            height: '28px',
-            borderRadius: '9999px',
-            backgroundColor: '#FEF3C7',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
-            <span style={{ color: '#92400E', fontWeight: 600, fontSize: '0.75rem' }}>
-              {currentUser.fullName.charAt(0).toUpperCase()}
-            </span>
-          </div>
-        )}
-      </div>
-      <div style={{ flex: 1, position: 'relative' }}>
-        <textarea
-          value={value}
-          onChange={(e) => {
-            onChange(e.target.value);
-            e.target.style.height = 'auto';
-            e.target.style.height = `${Math.min(e.target.scrollHeight, 100)}px`;
-          }}
-          onKeyPress={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              onSubmit();
-            }
-          }}
-          placeholder="Write a reply..."
-          style={{
-            width: '100%',
-            padding: '8px 12px 8px 36px',
-            border: '1px solid #E5E7EB',
-            borderRadius: '12px',
-            fontSize: '0.875rem',
-            resize: 'none',
-            minHeight: '36px',
-            backgroundColor: '#F9FAFB'
-          }}
-        />
-        <button
-          type="submit"
-          disabled={!value.trim() || isSubmitting}
-          style={{
-            position: 'absolute',
-            right: '4px',
-            bottom: '4px',
-            width: '28px',
-            height: '28px',
-            borderRadius: '8px',
-            backgroundColor: !value.trim() || isSubmitting ? '#E5E7EB' : '#F59E0B',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            border: 'none',
-            cursor: !value.trim() || isSubmitting ? 'not-allowed' : 'pointer'
-          }}
-        >
-          {isSubmitting ? (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      <div style={{ display: 'flex', gap: '12px' }}>
+        <div style={{ flexShrink: 0, marginTop: '3px' }}>
+          {currentUser.isAnonymous ? (
             <div style={{
-              width: '14px',
-              height: '14px',
-              border: '1.5px solid rgba(255,255,255,0.5)',
-              borderTopColor: 'white',
-              borderRadius: '50%',
-              animation: 'spin 0.8s linear infinite'
-            }} />
+              width: '28px',
+              height: '28px',
+              borderRadius: '9999px',
+              backgroundColor: '#FEF3C7',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <span style={{ color: '#92400E', fontWeight: 600, fontSize: '0.75rem' }}>A</span>
+            </div>
+          ) : currentUser.avatarUrl ? (
+            <div style={{
+              width: '28px',
+              height: '28px',
+              borderRadius: '9999px',
+              overflow: 'hidden'
+            }}>
+              <Image
+                src={currentUser.avatarUrl}
+                alt="Your avatar"
+                width={28}
+                height={28}
+                style={{ objectFit: 'cover', width: '100%', height: '100%' }}
+              />
+            </div>
           ) : (
-            <Send size={14} color={!value.trim() ? '#9CA3AF' : '#FFFFFF'} style={{ strokeWidth: 1.5 }} />
+            <div style={{
+              width: '28px',
+              height: '28px',
+              borderRadius: '9999px',
+              backgroundColor: '#FEF3C7',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <span style={{ color: '#92400E', fontWeight: 600, fontSize: '0.75rem' }}>
+                {currentUser.fullName.charAt(0).toUpperCase()}
+              </span>
+            </div>
           )}
-        </button>
-        
+        </div>
+        <div style={{ flex: 1, position: 'relative' }}>
+          <textarea
+            value={value}
+            onChange={(e) => {
+              onChange(e.target.value);
+              e.target.style.height = 'auto';
+              e.target.style.height = `${Math.min(e.target.scrollHeight, 100)}px`;
+            }}
+            onKeyPress={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                onSubmit();
+              }
+            }}
+            placeholder="Write a reply..."
+            style={{
+              width: '100%',
+              padding: '8px 44px 8px 36px',
+              border: '1px solid #E5E7EB',
+              borderRadius: '12px',
+              fontSize: '0.875rem',
+              resize: 'none',
+              minHeight: '36px',
+              backgroundColor: '#F9FAFB'
+            }}
+          />
+          <button
+            type="button"
+            onClick={toggleEmojiPicker}
+            style={{
+              position: 'absolute',
+              right: '44px',
+              bottom: '8px',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: '#6B7280'
+            }}
+            aria-label="Open emoji picker"
+          >
+            <Smile size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={onSubmit}
+            disabled={!value.trim() || isSubmitting}
+            style={{
+              position: 'absolute',
+              right: '8px',
+              bottom: '8px',
+              width: '24px',
+              height: '24px',
+              borderRadius: '6px',
+              backgroundColor: !value.trim() || isSubmitting ? '#E5E7EB' : '#F59E0B',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: 'none',
+              cursor: !value.trim() || isSubmitting ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {isSubmitting ? (
+              <div style={{
+                width: '12px',
+                height: '12px',
+                border: '1.5px solid rgba(255,255,255,0.5)',
+                borderTopColor: 'white',
+                borderRadius: '50%',
+                animation: 'spin 0.8s linear infinite'
+              }} />
+            ) : (
+              <Send size={12} color={!value.trim() ? '#9CA3AF' : '#FFFFFF'} style={{ strokeWidth: 1.5 }} />
+            )}
+          </button>
+        </div>
       </div>
-    </form>
+      {showEmojiPicker && (
+        <div>
+          <Picker
+            onEmojiClick={onEmojiClick}
+            theme="light"
+            skinTonesDisabled
+            searchDisabled
+            previewConfig={{ showPreview: false }}
+            style={{ width: '100%' }}
+          />
+        </div>
+      )}
+    </div>
   );
 }

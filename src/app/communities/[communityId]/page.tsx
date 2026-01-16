@@ -20,7 +20,7 @@ import {
   Settings,
   UserPlus,
   ImageIcon,
- 
+
   X,
   Loader2,
   Upload,
@@ -57,7 +57,7 @@ interface Post {
   id: string;
   content: string;
   media_url?: string | null;
-    media_urls?: string[] | null;
+  media_urls?: string[] | null;
   created_at: string;
   user_id: string;
   username: string;
@@ -225,7 +225,7 @@ export default function CommunityDetailPage() {
   const [community, setCommunity] = useState<Community | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
-   const [isMember, setIsMember] = useState(false);
+  const [isMember, setIsMember] = useState(false);
   const [userRole, setUserRole] = useState<'member' | 'admin' | 'moderator' | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -237,16 +237,16 @@ export default function CommunityDetailPage() {
   const [bannerUploadError, setBannerUploadError] = useState<string | null>(null);
   const [bannerUploading, setBannerUploading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-const [isModalSubmitting, setIsModalSubmitting] = useState(false);
-  
-  
-  
-  
+  const [isModalSubmitting, setIsModalSubmitting] = useState(false);
+
+
+
+
   const [reportingCommentId, setReportingCommentId] = useState<string | null>(null);
   const [reportReason, setReportReason] = useState<string>('');
   const [isMobile, setIsMobile] = useState(false);
-const [uploadingMedia, setUploadingMedia] = useState(false);
-const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
   // Only show the latest comment by default
 
   const [isKebabOpen, setIsKebabOpen] = useState(false);
@@ -254,24 +254,24 @@ const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
 
 
   const handleModalPostSubmit = async (text: string, mediaFiles: File[]) => {
-  if (!user || !community) {
-    toast.error('You must be logged in and in a community to post.');
-    return;
-  }
-  setIsModalSubmitting(true);
-  try {
-    // ✅ mediaFiles is already File[] — pass directly
-    const newPost = await createPostWithMedia(text, mediaFiles, user.id);
-    setPosts(prev => [newPost, ...prev]);
-    setIsModalOpen(false);
-    toast.success('Post shared with the community!');
-  } catch (err) {
-    console.error('Failed to create post via modal:', err);
-    toast.error(err instanceof Error ? err.message : 'Failed to share post.');
-  } finally {
-    setIsModalSubmitting(false);
-  }
-};
+    if (!user || !community) {
+      toast.error('You must be logged in and in a community to post.');
+      return;
+    }
+    setIsModalSubmitting(true);
+    try {
+      // ✅ mediaFiles is already File[] — pass directly
+      const newPost = await createPostWithMedia(text, mediaFiles, user.id);
+      setPosts(prev => [newPost, ...prev]);
+      setIsModalOpen(false);
+      toast.success('Post shared with the community!');
+    } catch (err) {
+      console.error('Failed to create post via modal:', err);
+      toast.error(err instanceof Error ? err.message : 'Failed to share post.');
+    } finally {
+      setIsModalSubmitting(false);
+    }
+  };
   const formatRecentActivity = (dateString: string): string => {
     const now = new Date();
     const created = new Date(dateString);
@@ -314,7 +314,7 @@ const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
     return now.getTime() - lastOnlineDate.getTime() < 5 * 60 * 1000;
   }, []); // 👈 empty dependency array — it never changes
 
- 
+
 
   // Close kebab menu when clicking outside
   useEffect(() => {
@@ -448,6 +448,8 @@ const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
           created_at,
           community_id,
           media_url,
+    media_urls,      
+
           likes_count,
           comments_count,
           user_id
@@ -490,12 +492,12 @@ const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
         });
 
         // 9. Fetch like status if user is logged in
-       
+
 
         setPosts(postsWithLikes);
 
         // 10. Fetch latest comment for each post
-        
+
       } catch (err) {
         console.error('Error fetching community:', err);
         const message = err instanceof Error ? err.message : 'Failed to load community data';
@@ -566,32 +568,32 @@ const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
     const interval = setInterval(updateLastOnline, 45_000); // every 45s
     return () => clearInterval(interval);
   }, [user, supabase]);
-  
+
   const reportComment = async (commentId: string, reason: string) => {
-  if (!user || !reason.trim()) return;
+    if (!user || !reason.trim()) return;
 
-  try {
-    const { error } = await supabase
-      .from('reports')
-      .insert({
-        target_type: 'comment',
-        target_id: commentId,
-        reporter_id: user.id,
-        reason: reason.trim(),
-        created_at: new Date().toISOString(),
-        status: 'pending',
-      });
+    try {
+      const { error } = await supabase
+        .from('reports')
+        .insert({
+          target_type: 'comment',
+          target_id: commentId,
+          reporter_id: user.id,
+          reason: reason.trim(),
+          created_at: new Date().toISOString(),
+          status: 'pending',
+        });
 
-    if (error) throw error;
+      if (error) throw error;
 
-    toast.success('Comment reported successfully');
-    setReportingCommentId(null);
-    setReportReason('');
-  } catch (error) {
-    console.error('Error reporting comment:', error);
-    toast.error('Failed to report comment');
-  }
-};
+      toast.success('Comment reported successfully');
+      setReportingCommentId(null);
+      setReportReason('');
+    } catch (error) {
+      console.error('Error reporting comment:', error);
+      toast.error('Failed to report comment');
+    }
+  };
   // In your page component, add this once:
   useEffect(() => {
     // Only run on client
@@ -664,22 +666,22 @@ const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
   };
 
   const createPostWithMedia = async (content: string, files: File[], userId: string) => {
-  if (!community) throw new Error('Community not loaded');
+    if (!community) throw new Error('Community not loaded');
 
-  let insertedPostId: string | null = null; // 👈 Track ID for cleanup
+    let insertedPostId: string | null = null; // 👈 Track ID for cleanup
 
-  try {
-    // Insert post with empty media_urls
-    const { data: postData, error: postError } = await supabase
-      .from('community_posts')
-      .insert({
-        community_id: communityId,
-        user_id: userId,
-        content: content.trim(),
-        created_at: new Date().toISOString(),
-        media_urls: [], // start empty
-      })
-      .select(`
+    try {
+      // Insert post with empty media_urls
+      const { data: postData, error: postError } = await supabase
+        .from('community_posts')
+        .insert({
+          community_id: communityId,
+          user_id: userId,
+          content: content.trim(),
+          created_at: new Date().toISOString(),
+          media_urls: [], // start empty
+        })
+        .select(`
         id,
         content,
         created_at,
@@ -687,106 +689,106 @@ const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
         media_urls,
         user_id
       `)
-      .single();
+        .single();
 
-    if (postError) throw postError;
+      if (postError) throw postError;
 
-    insertedPostId = postData.id; // ✅ Save for cleanup
+      insertedPostId = postData.id; // ✅ Save for cleanup
 
-    let mediaUrls: string[] = [];
+      let mediaUrls: string[] = [];
 
-    if (files.length > 0) {
-      // Validate files
-      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'video/mp4', 'video/quicktime'];
-      for (const file of files) {
-        if (!allowedTypes.includes(file.type)) {
-          throw new Error('Unsupported file type');
+      if (files.length > 0) {
+        // Validate files
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'video/mp4', 'video/quicktime'];
+        for (const file of files) {
+          if (!allowedTypes.includes(file.type)) {
+            throw new Error('Unsupported file type');
+          }
+          const maxSize = file.type.startsWith('video/') ? 15 : 5;
+          if (file.size > maxSize * 1024 * 1024) {
+            throw new Error(`File must be less than ${maxSize}MB`);
+          }
         }
-        const maxSize = file.type.startsWith('video/') ? 15 : 5;
-        if (file.size > maxSize * 1024 * 1024) {
-          throw new Error(`File must be less than ${maxSize}MB`);
-        }
+
+        // Upload all files
+        const uploadPromises = files.map(async (file, idx) => {
+          const fileExt = file.name.split('.').pop();
+          const fileName = `${communityId}/posts/${postData.id}_${idx}.${fileExt}`;
+          const { error: uploadError } = await supabase.storage
+            .from('communities')
+            .upload(fileName, file, { upsert: true, contentType: file.type });
+          if (uploadError) throw uploadError;
+          const { data } = supabase.storage.from('communities').getPublicUrl(fileName);
+          return data.publicUrl;
+        });
+
+        mediaUrls = await Promise.all(uploadPromises);
+
+        // Update post with full media_urls array
+        const { error: updateError } = await supabase
+          .from('community_posts')
+          .update({ media_urls: mediaUrls })
+          .eq('id', postData.id);
+        if (updateError) throw updateError;
       }
 
-      // Upload all files
-      const uploadPromises = files.map(async (file, idx) => {
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${communityId}/posts/${postData.id}_${idx}.${fileExt}`;
-        const { error: uploadError } = await supabase.storage
-          .from('communities')
-          .upload(fileName, file, { upsert: true, contentType: file.type });
-        if (uploadError) throw uploadError;
-        const { data } = supabase.storage.from('communities').getPublicUrl(fileName);
-        return data.publicUrl;
-      });
+      const { data: userData } = await supabase
+        .from('profiles')
+        .select('full_name, avatar_url, is_anonymous')
+        .eq('id', userId)
+        .single();
 
-      mediaUrls = await Promise.all(uploadPromises);
+      const isAnonymous = userData?.is_anonymous || false;
 
-      // Update post with full media_urls array
-      const { error: updateError } = await supabase
-        .from('community_posts')
-        .update({ media_urls: mediaUrls })
-        .eq('id', postData.id);
-      if (updateError) throw updateError;
+      return {
+        id: postData.id,
+        content: postData.content,
+        media_url: mediaUrls.length > 0 ? mediaUrls[0] : null,
+        media_urls: mediaUrls,
+        created_at: postData.created_at,
+        user_id: postData.user_id,
+        username: isAnonymous ? 'Anonymous' : userData?.full_name || 'Anonymous',
+        avatar_url: isAnonymous ? null : userData?.avatar_url || null,
+        community_id: postData.community_id,
+        likes_count: 0,
+        comments_count: 0,
+        is_liked: false,
+      };
+    } catch (error) {
+      console.error('Post creation failed:', error);
+      // ✅ Clean up using tracked ID
+      if (insertedPostId) {
+        await supabase.from('community_posts').delete().eq('id', insertedPostId);
+      }
+      throw error;
     }
-
-    const { data: userData } = await supabase
-      .from('profiles')
-      .select('full_name, avatar_url, is_anonymous')
-      .eq('id', userId)
-      .single();
-
-    const isAnonymous = userData?.is_anonymous || false;
-
-    return {
-      id: postData.id,
-      content: postData.content,
-      media_url: mediaUrls.length > 0 ? mediaUrls[0] : null,
-      media_urls: mediaUrls,
-      created_at: postData.created_at,
-      user_id: postData.user_id,
-      username: isAnonymous ? 'Anonymous' : userData?.full_name || 'Anonymous',
-      avatar_url: isAnonymous ? null : userData?.avatar_url || null,
-      community_id: postData.community_id,
-      likes_count: 0,
-      comments_count: 0,
-      is_liked: false,
-    };
-  } catch (error) {
-    console.error('Post creation failed:', error);
-    // ✅ Clean up using tracked ID
-    if (insertedPostId) {
-      await supabase.from('community_posts').delete().eq('id', insertedPostId);
-    }
-    throw error;
-  }
-};
+  };
   const handleCreatePost = async (e: FormEvent) => {
-  e.preventDefault();
-  if (!user || !community || (!newPostContent.trim() && newPostMedia.length === 0)) return;
-  setError(null);
-  setUploadingMedia(newPostMedia.length > 0);
-  try {
-    // ✅ Pass newPostMedia (which is File[]) directly
-    const newPost = await createPostWithMedia(newPostContent.trim(), newPostMedia, user.id);
-    setPosts((prev) => [newPost, ...prev]);
-    setNewPostContent('');
-    setNewPostMedia([]);
-    toast.success('Post created successfully!');
-  } catch (err) {
-    console.error('Error creating post:', err);
-    const errorMessage = err instanceof Error
-      ? err.message
-      : typeof err === 'string'
-      ? err
-      : 'Failed to create post';
-    setError(errorMessage);
-    toast.error('Failed to create post');
-  }
-};
+    e.preventDefault();
+    if (!user || !community || (!newPostContent.trim() && newPostMedia.length === 0)) return;
+    setError(null);
+    setUploadingMedia(newPostMedia.length > 0);
+    try {
+      // ✅ Pass newPostMedia (which is File[]) directly
+      const newPost = await createPostWithMedia(newPostContent.trim(), newPostMedia, user.id);
+      setPosts((prev) => [newPost, ...prev]);
+      setNewPostContent('');
+      setNewPostMedia([]);
+      toast.success('Post created successfully!');
+    } catch (err) {
+      console.error('Error creating post:', err);
+      const errorMessage = err instanceof Error
+        ? err.message
+        : typeof err === 'string'
+          ? err
+          : 'Failed to create post';
+      setError(errorMessage);
+      toast.error('Failed to create post');
+    }
+  };
 
-  
-  
+
+
   const updateBanner = async (file: File) => {
     if (!community) return;
 
@@ -839,7 +841,7 @@ const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
 
       setPosts((prev) => prev.filter((post) => post.id !== postId));
 
-     
+
 
       toast.success('Post deleted successfully');
     } catch (error: unknown) {
@@ -882,36 +884,36 @@ const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
   };
 
   const handlePostMediaSelect = (e: ChangeEvent<HTMLInputElement>) => {
-  const files = Array.from(e.target.files || []);
-  if (files.length === 0) return;
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
 
-  // Optional: limit total count (e.g., max 5)
-  if (newPostMedia.length + files.length > 5) {
-    setError('You can upload up to 5 files per post.');
-    return;
-  }
-
-  const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'video/mp4', 'video/quicktime'];
-  const maxSizeMB = (type: string) => (type.startsWith('video/') ? 15 : 5);
-
-  for (const file of files) {
-    if (!allowedTypes.includes(file.type)) {
-      setError('Unsupported file type. Please upload JPG, PNG, GIF, MP4 or MOV files.');
+    // Optional: limit total count (e.g., max 5)
+    if (newPostMedia.length + files.length > 5) {
+      setError('You can upload up to 5 files per post.');
       return;
     }
-    if (file.size > maxSizeMB(file.type) * 1024 * 1024) {
-      setError(`File must be less than ${maxSizeMB(file.type)}MB`);
-      return;
-    }
-  }
 
-  setNewPostMedia((prev) => [...prev, ...files]);
-  setError(null);
-};
-const removePostMedia = () => {
-  setNewPostMedia([]);
-  setError(null);
-};
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'video/mp4', 'video/quicktime'];
+    const maxSizeMB = (type: string) => (type.startsWith('video/') ? 15 : 5);
+
+    for (const file of files) {
+      if (!allowedTypes.includes(file.type)) {
+        setError('Unsupported file type. Please upload JPG, PNG, GIF, MP4 or MOV files.');
+        return;
+      }
+      if (file.size > maxSizeMB(file.type) * 1024 * 1024) {
+        setError(`File must be less than ${maxSizeMB(file.type)}MB`);
+        return;
+      }
+    }
+
+    setNewPostMedia((prev) => [...prev, ...files]);
+    setError(null);
+  };
+  const removePostMedia = () => {
+    setNewPostMedia([]);
+    setError(null);
+  };
 
   // --- UI Rendering (with inline styles) ---
   if (loading) {
@@ -1086,47 +1088,47 @@ const removePostMedia = () => {
   };
 
   const transformPostForCard = (post: Post) => {
-  // Keep griefTypes exactly as you had it — no changes
- const validGriefTypes = [
-  'parent', 'child', 'spouse', 'sibling', 'friend',
-  'pet', 'miscarriage', 'caregiver', 'suicide', 'other'
-] as const;
+    // Keep griefTypes exactly as you had it — no changes
+    const validGriefTypes = [
+      'parent', 'child', 'spouse', 'sibling', 'friend',
+      'pet', 'miscarriage', 'caregiver', 'suicide', 'other'
+    ] as const;
 
-type GriefType = typeof validGriefTypes[number];
+    type GriefType = typeof validGriefTypes[number];
 
-// Later...
-const griefType = community?.grief_type;
-const griefTypes: GriefType[] = 
-  (griefType && validGriefTypes.some(type => type === griefType))
-    ? [griefType as GriefType]
-    : ['other'];
-  // ✅ FIX MEDIA: Use post.media_urls if available, fallback to post.media_url
-  const mediaUrls = Array.isArray(post.media_urls) && post.media_urls.length > 0
-    ? post.media_urls.filter(Boolean)
-    : post.media_url
-      ? [post.media_url]
-      : [];
+    // Later...
+    const griefType = community?.grief_type;
+    const griefTypes: GriefType[] =
+      (griefType && validGriefTypes.some(type => type === griefType))
+        ? [griefType as GriefType]
+        : ['other'];
+    // ✅ FIX MEDIA: Use post.media_urls if available, fallback to post.media_url
+    const mediaUrls = Array.isArray(post.media_urls) && post.media_urls.length > 0
+      ? post.media_urls.filter(Boolean)
+      : post.media_url
+        ? [post.media_url]
+        : [];
 
-  return {
-    id: post.id,
-    userId: post.user_id,
-    text: post.content,
-    mediaUrl: mediaUrls[0] || undefined, // first item or undefined
-    mediaUrls, // ✅ now includes all uploaded images
-    griefTypes,
-    createdAt: new Date(post.created_at),
-    likes: post.likes_count,
-    isLiked: post.is_liked,
-    commentsCount: post.comments_count,
-    isAnonymous: post.username.toLowerCase().includes('anonymous'),
-    user: {
-      id: post.user_id,
-      fullName: post.username.toLowerCase().includes('anonymous') ? null : post.username,
-      avatarUrl: post.avatar_url,
+    return {
+      id: post.id,
+      userId: post.user_id,
+      text: post.content,
+      mediaUrl: mediaUrls[0] || undefined, // first item or undefined
+      mediaUrls, // ✅ now includes all uploaded images
+      griefTypes,
+      createdAt: new Date(post.created_at),
+      likes: post.likes_count,
+      isLiked: post.is_liked,
+      commentsCount: post.comments_count,
       isAnonymous: post.username.toLowerCase().includes('anonymous'),
-    },
+      user: {
+        id: post.user_id,
+        fullName: post.username.toLowerCase().includes('anonymous') ? null : post.username,
+        avatarUrl: post.avatar_url,
+        isAnonymous: post.username.toLowerCase().includes('anonymous'),
+      },
+    };
   };
-};
   return (
     <div style={pageContainer}>
       {/* Banner */}
@@ -1361,62 +1363,62 @@ const griefTypes: GriefType[] =
               </div>
             </div>
           </div>
-          
+
 
           {/* Create Post */}
           {isMember && (
-  <PostComposer
-    onSubmit={async (text: string, mediaFiles: File[]) => {
-      if (!user) return;
-      const newPost = await createPostWithMedia(text, mediaFiles, user.id); // ✅ pass full array
-      setPosts(prev => [newPost, ...prev]);
-      toast.success('Post shared!');
-    }}
-    isSubmitting={uploadingMedia}
-    placeholder={`What's on your mind, ${authUsername}? Share your thoughts...`}
-    avatarUrl={user?.user_metadata?.avatar_url || null}
-    displayName={authUsername}
-    maxFiles={4} // or 5, as you prefer
-  />
-)}
-        {/* Posts */}
-<div style={{ display: 'flex', flexDirection: 'column', gap: spacing['2xl'] }}>
-  {posts.length === 0 ? (
-    <div style={{ ...cardStyle, padding: '2rem', textAlign: 'center' }}>
-      <MessageCircle size={48} style={{ color: baseColors.border, margin: '0 auto 1rem' }} />
-      <h3 style={{ fontSize: '1.125rem', fontWeight: 600, color: baseColors.text.primary, marginBottom: spacing.sm }}>
-        No posts yet
-      </h3>
-      <p style={{ color: baseColors.text.secondary, marginBottom: spacing.lg }}>
-        {isMember
-          ? "Be the first to share your thoughts with the community."
-          : "Join this community to see and share posts."}
-      </p>
-      {!isMember && user && (
-        <button onClick={handleMembership} style={buttonStyle(baseColors.primary)}>
-          <UserPlus size={16} style={{ marginRight: '0.25rem' }} />
-          Join to Participate
-        </button>
-      )}
-    </div>
-  ) : (
-    posts.map((post) => (
-      <PostCard
-        key={post.id}
-        post={transformPostForCard(post)}
-        canDelete={isModerator || post.user_id === user?.id}
-        onPostDeleted={() => {
-          setPosts(prev => prev.filter(p => p.id !== post.id));
-          // Optional: clean up comments if you still track them elsewhere
-         
-        }}
-        context="community"
-        showAuthor={true}
-      />
-    ))
-  )}
-</div>
-          
+            <PostComposer
+              onSubmit={async (text: string, mediaFiles: File[]) => {
+                if (!user) return;
+                const newPost = await createPostWithMedia(text, mediaFiles, user.id); // ✅ pass full array
+                setPosts(prev => [newPost, ...prev]);
+                toast.success('Post shared!');
+              }}
+              isSubmitting={uploadingMedia}
+              placeholder={`What's on your mind, ${authUsername}? Share your thoughts...`}
+              avatarUrl={user?.user_metadata?.avatar_url || null}
+              displayName={authUsername}
+              maxFiles={4} // or 5, as you prefer
+            />
+          )}
+          {/* Posts */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: spacing['2xl'] }}>
+            {posts.length === 0 ? (
+              <div style={{ ...cardStyle, padding: '2rem', textAlign: 'center' }}>
+                <MessageCircle size={48} style={{ color: baseColors.border, margin: '0 auto 1rem' }} />
+                <h3 style={{ fontSize: '1.125rem', fontWeight: 600, color: baseColors.text.primary, marginBottom: spacing.sm }}>
+                  No posts yet
+                </h3>
+                <p style={{ color: baseColors.text.secondary, marginBottom: spacing.lg }}>
+                  {isMember
+                    ? "Be the first to share your thoughts with the community."
+                    : "Join this community to see and share posts."}
+                </p>
+                {!isMember && user && (
+                  <button onClick={handleMembership} style={buttonStyle(baseColors.primary)}>
+                    <UserPlus size={16} style={{ marginRight: '0.25rem' }} />
+                    Join to Participate
+                  </button>
+                )}
+              </div>
+            ) : (
+              posts.map((post) => (
+                <PostCard
+                  key={post.id}
+                  post={transformPostForCard(post)}
+                  canDelete={isModerator || post.user_id === user?.id}
+                  onPostDeleted={() => {
+                    setPosts(prev => prev.filter(p => p.id !== post.id));
+                    // Optional: clean up comments if you still track them elsewhere
+
+                  }}
+                  context="community"
+                  showAuthor={true}
+                />
+              ))
+            )}
+          </div>
+
         </div>
 
         {/* Sidebar */}
@@ -1841,7 +1843,7 @@ const griefTypes: GriefType[] =
               </div>
             </div>
           </div>
-         
+
         </div>
       )}
 
