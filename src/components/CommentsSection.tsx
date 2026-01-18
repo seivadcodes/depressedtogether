@@ -1099,6 +1099,7 @@ if (profileError) {
                   color: '#374151',
                   lineHeight: 1.5,
                   whiteSpace: 'pre-wrap',
+                  overflowWrap: 'break-word',
                   fontSize: '0.875rem'
                 }}>
                   {comment.content}
