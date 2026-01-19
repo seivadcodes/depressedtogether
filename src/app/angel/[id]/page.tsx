@@ -6,7 +6,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import AddMemoryModal from '@/components/angels/AddMemoryModal';
-import HeartsAndComments from '@/components/angels/HeartsAndComments'; // Updated import path
+import HeartsAndComments from '@/components/angels/HeartsAndComments';
 
 const griefLabels = {
   parent: 'Loss of a Parent',
@@ -64,7 +64,6 @@ export default function AngelDetailPage() {
       try {
         const supabase = createClient();
 
-        // Fetch angel
         const { data: angelData, error: angelError } = await supabase
           .from('angels')
           .select('*')
@@ -73,7 +72,6 @@ export default function AngelDetailPage() {
 
         if (angelError) throw angelError;
 
-        // Fetch related memories
         const { data: memoryData, error: memoryError } = await supabase
           .from('angel_memories')
           .select('id, photo_url, caption')
@@ -97,20 +95,12 @@ export default function AngelDetailPage() {
     fetchAngelAndMemories();
   }, [params.id]);
 
-/**
- * 获取并更新记忆列表的异步函数
- * 该函数会从数据库中查询指定angel的记忆记录
- * 并更新组件的状态
- */
-  // 如果angel不存在，则直接返回
   const refetchMemories = async () => {
     if (!angel) return;
-  // 创建Supabase客户端实例
     const supabase = createClient();
-  // 从数据库查询angel的记忆记录
     const { data } = await supabase
       .from('angel_memories')
-      .select('id, photo_url, caption') // 选择需要查询的字段
+      .select('id, photo_url, caption')
       .eq('angel_id', angel.id)
       .order('created_at', { ascending: false });
     setMemories(data || []);
@@ -165,7 +155,7 @@ export default function AngelDetailPage() {
               {angel.photo_url ? (
                 <div style={{ width: '130px', height: '130px', borderRadius: '50%', overflow: 'hidden' }}>
                   <Image
-                    src={angel.photo_url}
+                   src={`/api/media/${angel.photo_url}`}
                     alt={angel.name}
                     width={130}
                     height={130}
@@ -214,14 +204,42 @@ export default function AngelDetailPage() {
               </div>
             )}
 
+            {/* ✅ Updated: Styled sunrise/sunset tags side by side */}
             {(angel.sunrise || angel.sunset) && (
-              <div style={{ marginTop: '1.5rem', textAlign: 'center', color: '#64748b', fontSize: '1rem' }}>
-                {angel.sunrise && <>🌅 Sunrise: {angel.sunrise}<br /></>}
-                {angel.sunset && <>🌇 Sunset: {angel.sunset}</>}
+              <div style={{ marginTop: '1.5rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+                {angel.sunrise && (
+                  <span
+                    style={{
+                      background: '#f0fdf4',
+                      color: '#166534',
+                      padding: '0.35rem 0.75rem',
+                      borderRadius: '12px',
+                      fontSize: '0.825rem',
+                      fontWeight: '600',
+                      border: '1px solid #bbf7d0',
+                    }}
+                  >
+                    Sunrise: {angel.sunrise}
+                  </span>
+                )}
+                {angel.sunset && (
+                  <span
+                    style={{
+                      background: '#fdf2f8',
+                      color: '#9d174d',
+                      padding: '0.35rem 0.75rem',
+                      borderRadius: '12px',
+                      fontSize: '0.825rem',
+                      fontWeight: '600',
+                      border: '1px solid #fbcfe8',
+                    }}
+                  >
+                    Sunset: {angel.sunset}
+                  </span>
+                )}
               </div>
             )}
 
-            {/* Unified Hearts & Comments */}
             {!angel.is_private && (
               <HeartsAndComments
                 itemId={angel.id}
@@ -277,12 +295,11 @@ export default function AngelDetailPage() {
                       borderRadius: '10px',
                       padding: '0.75rem',
                       border: '1px solid #e2e8f0',
-                      
                     }}
                   >
                     <div style={{ position: 'relative', marginBottom: '0.5rem' }}>
                       <Image
-                        src={memory.photo_url}
+                        src={`/api/media/${memory.photo_url}`}
                         alt={`Memory for ${angel.name}`}
                         width={280}
                         height={280}
@@ -315,21 +332,14 @@ export default function AngelDetailPage() {
                         </div>
                       )}
                     </div>
-                    {/* Memory-specific Hearts & Comments */}
                     <HeartsAndComments
-  itemId={memory.id}
-  itemType="memory"
-  styleOverrides={{ 
-    marginTop: '0.5rem',
-    marginLeft: '-0.75rem',
-    marginRight: '-0.75rem',
-    marginBottom: '-0.75rem',
-    borderTopLeftRadius: '0',
-    borderTopRightRadius: '0',
-    borderBottomLeftRadius: '8px',
-    borderBottomRightRadius: '8px'
-  }}
-/>
+                      itemId={angel.id}
+                      itemType="angel"
+                      allowComments={angel.allow_comments}
+                      styleOverrides={{
+                        marginTop: '24px',
+                      }}
+                    />
                   </div>
                 ))}
               </div>
@@ -351,7 +361,6 @@ export default function AngelDetailPage() {
         </div>
       </div>
 
-      {/* Modal */}
       {isAddMemoryModalOpen && angel && (
         <AddMemoryModal
           angelId={angel.id}

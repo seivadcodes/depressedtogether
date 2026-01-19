@@ -69,7 +69,7 @@ export default function AddMemoryModal({
         .insert({
           angel_id: angelId,
           profile_id: (await supabase.auth.getUser()).data.user?.id, // optional: store who added it
-          photo_url: publicUrl,
+          photo_url: fileName,
           caption: caption.trim() || null,
         });
 
