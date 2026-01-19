@@ -19,7 +19,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import Image from 'next/image';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import NotificationModal from '@/components/notifications/NotificationModal';
 
 type CallInvitation = {
@@ -31,7 +31,6 @@ type CallInvitation = {
 export default function Header() {
   const { user, loading: authLoading, signOut } = useAuth();
   const router = useRouter();
-  const pathname = usePathname();
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [profile, setProfile] = useState<{ full_name?: string; avatar_url?: string } | null>(null);
@@ -48,11 +47,6 @@ export default function Header() {
   const menuRef = useRef<HTMLDivElement>(null);
   const hamburgerMenuRef = useRef<HTMLDivElement>(null);
   const supabase = useMemo(() => createClient(), []);
-
-  // Determine if footer is hidden → show hamburger
-  const shouldShowHamburger = useMemo(() => {
-    return pathname?.includes('/chat') || pathname?.startsWith('/messages');
-  }, [pathname]);
 
   // Fetch profile
   useEffect(() => {
@@ -277,7 +271,7 @@ export default function Header() {
     setShowCallBanner(false);
   };
 
-  // ✅ Define nav items with proper Lucide icons (no custom SVGs needed)
+  // Nav items for hamburger menu — always available
   const navItems = [
     { name: 'Dashboard', href: '/dashboard', icon: Home },
     { name: 'Connect', href: '/connect', icon: Users },
@@ -313,46 +307,37 @@ export default function Header() {
             justifyContent: 'space-between',
           }}
         >
-          {/* Left side: Hamburger or Home link */}
-          {shouldShowHamburger ? (
-            <button
-              onClick={() => setIsHamburgerMenuOpen(true)}
-              aria-label="Open navigation menu"
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'white',
-                cursor: 'pointer',
-                padding: '0.25rem',
-                borderRadius: '0.25rem',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)')}
-              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-            >
-              <Menu size={24} color="white" />
-            </button>
-          ) : (
-            <Link
-              href="/"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                color: 'white',
-                textDecoration: 'none',
-                transition: 'color 0.2s',
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = '#bfdbfe')}
-              onMouseLeave={(e) => (e.currentTarget.style.color = 'white')}
-              aria-label="Back to Home"
-            >
-              <Home size={20} color="white" />
-              <span style={{ fontWeight: 500 }}>Surviving Death Loss</span>
-            </Link>
-          )}
+          {/* Always show hamburger */}
+          <button
+            onClick={() => setIsHamburgerMenuOpen(true)}
+            aria-label="Open navigation menu"
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'white',
+              cursor: 'pointer',
+              padding: '0.25rem',
+              borderRadius: '0.25rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)')}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+          >
+            <Menu size={24} color="white" />
+          </button>
+
+          {/* App title (non-clickable or minimal link) */}
+          <span
+            style={{
+              fontWeight: 500,
+              color: 'white',
+              fontSize: '1rem',
+            }}
+          >
+            Surviving Death Loss
+          </span>
 
           {/* Right side: Authed or guest actions */}
           {user ? (
@@ -707,8 +692,8 @@ export default function Header() {
         ></div>
       )}
 
-      {/* Hamburger Navigation Menu */}
-      {shouldShowHamburger && isHamburgerMenuOpen && (
+      {/* Hamburger Navigation Menu — now always available */}
+      {isHamburgerMenuOpen && (
         <>
           <div
             style={{
