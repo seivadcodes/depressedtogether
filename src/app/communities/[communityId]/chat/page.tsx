@@ -9,7 +9,6 @@ import { toast } from 'react-hot-toast';
 import Image from 'next/image';
 import FooterNav from '@/components/layout/FooterNav';
 import CallOverlay from '@/components/calling/CallOverlay';
-import { useCall } from '@/context/CallContext';
 
 // Types
 type User = {
@@ -42,16 +41,28 @@ const getInitials = (name: string | null | undefined): string => {
     .toUpperCase();
 };
 
-const formatTime = (isoString: string) => {
+const formatDateLabel = (isoString: string): string => {
+  const msgDate = new Date(isoString);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (msgDate.toDateString() === today.toDateString()) return 'Today';
+  if (msgDate.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  if (msgDate.getFullYear() === now.getFullYear())
+    return msgDate.toLocaleDateString([], { month: 'long', day: 'numeric' });
+  return msgDate.toLocaleDateString([], { year: 'numeric', month: 'long', day: 'numeric' });
+};
+
+const formatTimeOnly = (isoString: string): string => {
   return new Date(isoString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
-// Use 5-minute window like the main community page
 const isUserOnline = (lastOnline: string | null | undefined): boolean => {
   if (!lastOnline) return false;
   const lastOnlineDate = new Date(lastOnline);
   const now = new Date();
-  return now.getTime() - lastOnlineDate.getTime() < 5 * 60 * 1000; // 5 minutes
+  return now.getTime() - lastOnlineDate.getTime() < 5 * 60 * 1000;
 };
 
 const isImageUrl = (url: string) => /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(url);
@@ -76,6 +87,7 @@ export default function CommunityChatPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isMobileView, setIsMobileView] = useState(false);
   const [showMessageMenu, setShowMessageMenu] = useState<string | null>(null);
+  const [lastChatView, setLastChatView] = useState<string | null>(null);
 
   // Refs
   const wsRef = useRef<WebSocket | null>(null);
@@ -97,62 +109,50 @@ export default function CommunityChatPage() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // Fetch members and compute online count
   const fetchMembersAndOnlineCount = useCallback(async () => {
     if (!user || !communityId) return;
-
     try {
-      const { data: membersData, error } = await supabase
-        .from('community_members')
+      const { data: onlineMembersData, error } = await supabase
+        .from('community_online_members')
         .select(`
           user_id,
-          user:profiles!inner(id, full_name, avatar_url, last_online)
+          full_name,
+          avatar_url,
+          last_online
         `)
         .eq('community_id', communityId);
-
-      if (error) throw error;
-
-      const formattedMembers: User[] = (membersData || []).map((m) => {
-        const profile = m.user && Array.isArray(m.user) ? m.user[0] : m.user;
-        return {
-          id: m.user_id,
-          full_name: profile?.full_name || 'Anonymous',
-          avatar_url: profile?.avatar_url || null,
-          last_online: profile?.last_online || null,
-        };
-      });
-
-      const trulyOnline = formattedMembers.filter((u) => isUserOnline(u.last_online));
-      setOnlineMembers(trulyOnline);
+      if (error) {
+        console.error('Failed to fetch online members:', error);
+        return;
+      }
+      const formattedMembers: User[] = (onlineMembersData || []).map((m) => ({
+        id: m.user_id,
+        full_name: m.full_name || 'Anonymous',
+        avatar_url: m.avatar_url || null,
+        last_online: m.last_online || null,
+      }));
+      setOnlineMembers(formattedMembers);
     } catch (err) {
       console.error('Failed to fetch members for online count:', err);
     }
   }, [communityId, user, supabase]);
 
-  // Fetch initial data
   const fetchInitialData = useCallback(async () => {
     if (!user || !communityId) return;
-
     try {
-      // Get my role
       const { data: myRoleData } = await supabase
         .from('community_members')
         .select('role')
         .eq('community_id', communityId)
         .eq('user_id', user.id)
         .single();
-
       if (!myRoleData) {
         toast.error('You must be a member to view chat');
         router.push(`/communities/${communityId}`);
         return;
       }
       setMyRole(myRoleData.role);
-
-      // Load members and online count
       await fetchMembersAndOnlineCount();
-
-      // Load messages
       const { data: msgData } = await supabase
         .from('community_messages')
         .select(`
@@ -161,8 +161,24 @@ export default function CommunityChatPage() {
         `)
         .eq('community_id', communityId)
         .order('created_at', { ascending: true });
-
       setMessages(msgData || []);
+      const { data: viewData } = await supabase
+        .from('community_user_views')
+        .select('last_chat_view')
+        .eq('user_id', user.id)
+        .eq('community_id', communityId)
+        .single();
+      setLastChatView(viewData?.last_chat_view || null);
+      await supabase
+        .from('community_user_views')
+        .upsert(
+          {
+            user_id: user.id,
+            community_id: communityId,
+            last_chat_view: new Date().toISOString(),
+          },
+          { onConflict: 'user_id,community_id' }
+        );
     } catch (err) {
       console.error('Failed to load chat:', err);
       toast.error('Failed to load chat');
@@ -175,15 +191,13 @@ export default function CommunityChatPage() {
     fetchInitialData();
   }, [fetchInitialData]);
 
-  // Refresh online count every 30 seconds (like main community page)
   useEffect(() => {
     if (!communityId || !user) return;
-    fetchMembersAndOnlineCount(); // Initial refresh
+    fetchMembersAndOnlineCount();
     const interval = setInterval(fetchMembersAndOnlineCount, 30_000);
     return () => clearInterval(interval);
   }, [communityId, user, fetchMembersAndOnlineCount]);
 
-  // WebSocket for real-time
   useEffect(() => {
     if (!user || !communityId) return;
     const socket = new WebSocket(
@@ -235,14 +249,57 @@ export default function CommunityChatPage() {
     return () => socket.close();
   }, [communityId, user, supabase]);
 
-  // Scroll to bottom
-  useLayoutEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'auto' });
+  // 👇 Group messages by date label
+  const groupedMessages = useMemo(() => {
+    const groups: { dateLabel: string; messages: CommunityMessage[] }[] = [];
+    let currentLabel = '';
+    for (const msg of messages) {
+      const label = formatDateLabel(msg.created_at);
+      if (label !== currentLabel) {
+        currentLabel = label;
+        groups.push({ dateLabel: label, messages: [] });
+      }
+      groups[groups.length - 1].messages.push(msg);
     }
-  }, [messages.length]);
+    return groups;
+  }, [messages]);
 
-  // Send message
+  // 👇 Find first unread message FROM OTHER USERS only
+  const firstUnreadIndex = useMemo(() => {
+    if (!lastChatView || !user) return -1;
+    const cutoff = new Date(lastChatView);
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i];
+      if (msg.sender_id !== user.id && new Date(msg.created_at) > cutoff) {
+        return i;
+      }
+    }
+    return -1;
+  }, [messages, lastChatView, user]);
+
+  // 🔁 NEW: Auto-scroll on initial load — either to unread or bottom
+  useLayoutEffect(() => {
+    if (isLoading || messages.length === 0) return;
+
+    // If there's an unread message, scroll to it
+    if (firstUnreadIndex >= 0) {
+      const el = messageRefs.current.get(messages[firstUnreadIndex].id);
+      if (el) {
+        el.scrollIntoView({ behavior: 'auto', block: 'center' });
+        // Fade out banner after 10s
+        const timer = setTimeout(() => {
+          const banner = document.getElementById('unread-marker');
+          if (banner) banner.style.opacity = '0.3';
+        }, 10_000);
+        return () => clearTimeout(timer);
+      }
+    } else {
+      // Otherwise scroll to bottom
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+    }
+  }, [isLoading, messages.length, firstUnreadIndex]); // Only run once after load
+
+  // Rest of handlers unchanged...
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !user || !communityId) return;
@@ -276,7 +333,6 @@ export default function CommunityChatPage() {
         .single();
       if (error) throw error;
       setMessages((prev) => prev.map((msg) => (msg.id === tempId ? inserted : msg)));
-      // Notify others
       fetch('/api/notify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -295,7 +351,6 @@ export default function CommunityChatPage() {
     }
   };
 
-  // Handle typing indicator
   const handleUserTyping = useCallback(() => {
     if (!user || !communityId) return;
     if (typingDebounceRef.current) clearTimeout(typingDebounceRef.current);
@@ -326,7 +381,6 @@ export default function CommunityChatPage() {
     }, 300);
   }, [communityId, user]);
 
-  // Reactions + Reply
   const handleLongPressStart = (messageId: string, isOwn: boolean, event: React.MouseEvent | React.TouchEvent) => {
     event.preventDefault();
     let x, y;
@@ -367,9 +421,7 @@ export default function CommunityChatPage() {
       prev.map((msg) => (msg.id === messageId ? { ...msg, reactions: updated } : msg))
     );
     setShowReactionPicker(null);
-    // Save to DB
     await supabase.from('community_messages').update({ reactions: updated }).eq('id', messageId);
-    // Broadcast
     fetch('/api/notify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -384,7 +436,6 @@ export default function CommunityChatPage() {
     });
   };
 
-  // Delete for everyone
   const handleDeleteForEveryone = async (messageId: string) => {
     if (!user || !communityId) return;
     const message = messages.find((m) => m.id === messageId);
@@ -426,7 +477,6 @@ export default function CommunityChatPage() {
     }
   };
 
-  // File upload
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !communityId || !user) return;
@@ -488,7 +538,6 @@ export default function CommunityChatPage() {
     }
   };
 
-  // Close menus on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const emojiPicker = document.querySelector('.emoji-picker-container');
@@ -506,7 +555,6 @@ export default function CommunityChatPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Render
   if (isLoading) {
     return (
       <div style={{ padding: '2rem', textAlign: 'center', color: '#6b7280' }}>
@@ -556,365 +604,419 @@ export default function CommunityChatPage() {
           gap: '12px',
         }}
       >
-        {messages.length === 0 ? (
+        {groupedMessages.length === 0 ? (
           <div style={{ textAlign: 'center', color: '#94a3b8', marginTop: '40px' }}>
             <div style={{ fontSize: '48px', marginBottom: '16px', opacity: 0.4 }}>💬</div>
             <p>No messages yet. Be the first to say hello!</p>
           </div>
         ) : (
-          messages.map((msg) => {
-            const isOwn = msg.sender_id === user?.id;
-            const repliedMsg = messages.find((m) => m.id === msg.reply_to);
-            const isDeleted = msg.deleted_for_everyone;
-            const reactions = msg.reactions || {};
-            const allReactions = Object.values(reactions).flat();
-            const reactionCounts = allReactions.reduce((acc, emoji) => {
-              acc[emoji] = (acc[emoji] || 0) + 1;
-              return acc;
-            }, {} as Record<string, number>);
-            return (
+          groupedMessages.map((group, groupIndex) => (
+            <div key={group.dateLabel}>
+              {/* Date Header */}
               <div
-                key={msg.id}
-                ref={(el) => {
-                  if (el) messageRefs.current.set(msg.id, el);
-                  else messageRefs.current.delete(msg.id);
+                style={{
+                  textAlign: 'center',
+                  fontSize: '12px',
+                  color: '#64748b',
+                  margin: '16px 0 8px',
+                  fontWeight: '600',
                 }}
-                style={{ display: 'flex', justifyContent: isOwn ? 'flex-end' : 'flex-start', position: 'relative' }}
               >
-                {!isOwn && (
-                  <div style={{ width: '36px', marginRight: '12px', flexShrink: 0, marginTop: repliedMsg ? '24px' : '0' }}>
-                    {msg.sender.avatar_url ? (
-                      <Image
-                        src={msg.sender.avatar_url}
-                        alt={msg.sender.full_name || 'User'}
-                        width={36}
-                        height={36}
-                        style={{
-                          width: '36px',
-                          height: '36px',
-                          borderRadius: '50%',
-                          objectFit: 'cover',
-                        }}
-                        unoptimized
-                      />
-                    ) : (
+                {group.dateLabel}
+              </div>
+
+              {/* Messages in this group */}
+              {group.messages.map((msg) => {
+                const isOwn = msg.sender_id === user?.id;
+                const repliedMsg = messages.find((m) => m.id === msg.reply_to);
+                const isDeleted = msg.deleted_for_everyone;
+                const reactions = msg.reactions || {};
+                const allReactions = Object.values(reactions).flat();
+                const reactionCounts = allReactions.reduce((acc, emoji) => {
+                  acc[emoji] = (acc[emoji] || 0) + 1;
+                  return acc;
+                }, {} as Record<string, number>);
+
+                // Show "Unread" banner ONLY before first unread message from others
+                const showUnreadBanner = messages.indexOf(msg) === firstUnreadIndex && firstUnreadIndex >= 0;
+
+                return (
+                  <div key={msg.id}>
+                    {showUnreadBanner && (
                       <div
+                        id="unread-marker"
                         style={{
-                          width: '36px',
-                          height: '36px',
-                          borderRadius: '50%',
-                          backgroundColor: '#e0e7ff',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontWeight: '600',
-                          fontSize: '14px',
-                          color: '#4f46e5',
+                          textAlign: 'center',
+                          margin: '12px 0',
+                          position: 'sticky',
+                          top: '70px',
+                          zIndex: 5,
                         }}
                       >
-                        {getInitials(msg.sender.full_name)}
+                        <span
+                          style={{
+                            backgroundColor: '#e0e7ff',
+                            color: '#4f46e5',
+                            padding: '4px 12px',
+                            borderRadius: '20px',
+                            fontSize: '12px',
+                            fontWeight: '600',
+                          }}
+                        >
+                          Unread messages
+                        </span>
                       </div>
                     )}
-                  </div>
-                )}
-                <div style={{ maxWidth: '80%', position: 'relative' }}>
-                  {repliedMsg && !repliedMsg.deleted_for_everyone && (
+
                     <div
-                      style={{
-                        backgroundColor: '#f1f5f6',
-                        borderRadius: '10px',
-                        padding: '6px 10px',
-                        marginBottom: '6px',
-                        fontSize: '12px',
-                        borderLeft: '2px solid #94a3b8',
-                        cursor: 'pointer',
+                      ref={(el) => {
+                        if (el) messageRefs.current.set(msg.id, el);
+                        else messageRefs.current.delete(msg.id);
                       }}
-                      onClick={() => {
-                        const el = messageRefs.current.get(repliedMsg.id);
-                        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                      }}
+                      style={{ display: 'flex', justifyContent: isOwn ? 'flex-end' : 'flex-start', position: 'relative' }}
                     >
-                      <div style={{ fontWeight: '500', color: '#334155' }}>{repliedMsg.sender.full_name}</div>
-                      <div style={{ color: '#64748b' }}>
-                        {repliedMsg.content.substring(0, 40)}
-                        {repliedMsg.content.length > 40 ? '...' : ''}
-                      </div>
-                    </div>
-                  )}
-                  <div
-                    onMouseDown={(e) => {
-                      if (!isDeleted) {
-                        handleLongPressStart(msg.id, isOwn, e);
-                      }
-                    }}
-                    onMouseUp={handleLongPressEnd}
-                    onMouseLeave={handleLongPressEnd}
-                    onTouchStart={(e) => !isDeleted && handleLongPressStart(msg.id, isOwn, e)}
-                    onTouchEnd={handleLongPressEnd}
-                    onTouchCancel={handleLongPressEnd}
-                    style={{
-                      padding: '10px 14px',
-                      borderRadius: isOwn ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
-                      backgroundColor: isDeleted ? '#f3f4f6' : isOwn ? '#e0e7ff' : '#f1f5f6',
-                      color: isDeleted ? '#9ca3af' : isOwn ? '#312e81' : '#1e293b',
-                      fontSize: '14px',
-                      lineHeight: '1.4',
-                      position: 'relative',
-                      paddingRight: '30px',
-                      overflowWrap: 'break-word',
-                      cursor: isDeleted ? 'default' : 'pointer',
-                      fontStyle: isDeleted ? 'italic' : 'normal',
-                    }}
-                  >
-                    {!isDeleted && (
-                      <div
-                        style={{
-                          fontSize: '12px',
-                          fontWeight: '600',
-                          color: '#334155',
-                          marginBottom: '4px',
-                          lineHeight: 1.2,
-                        }}
-                      >
-                        {isOwn ? 'Me' : msg.sender.full_name}
-                      </div>
-                    )}
-                    {isOwn && !isDeleted && (
-                      <div className="message-menu-container" style={{ position: 'absolute', top: '6px', right: '6px', opacity: 0.4 }}>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShowMessageMenu(showMessageMenu === msg.id ? null : msg.id);
-                          }}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            color: '#64748b',
-                            cursor: 'pointer',
-                            fontSize: '16px',
-                            padding: '2px 4px',
-                            borderRadius: '4px',
-                          }}
-                          onMouseOver={(e) => {
-                            e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.1)';
-                            e.currentTarget.parentElement!.style.opacity = '1';
-                          }}
-                          onMouseOut={(e) => {
-                            e.currentTarget.style.backgroundColor = 'transparent';
-                            if (showMessageMenu !== msg.id) {
-                              e.currentTarget.parentElement!.style.opacity = '0';
-                            }
-                          }}
-                        >
-                          ⋮
-                        </button>
-                        {showMessageMenu === msg.id && (
-                          <div
-                            style={{
-                              position: 'absolute',
-                              top: '100%',
-                              right: 0,
-                              backgroundColor: 'white',
-                              borderRadius: '8px',
-                              boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
-                              zIndex: 10,
-                              minWidth: '140px',
-                              overflow: 'hidden',
-                            }}
-                          >
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setReplyingTo(msg);
-                                setShowMessageMenu(null);
-                                messageInputRef.current?.focus();
-                              }}
+                      {!isOwn && (
+                        <div style={{ width: '36px', marginRight: '12px', flexShrink: 0, marginTop: repliedMsg ? '24px' : '0' }}>
+                          {msg.sender.avatar_url ? (
+                            <Image
+                              src={msg.sender.avatar_url}
+                              alt={msg.sender.full_name || 'User'}
+                              width={36}
+                              height={36}
                               style={{
-                                width: '100%',
-                                padding: '10px 14px',
-                                textAlign: 'left',
-                                background: 'none',
-                                border: 'none',
-                                cursor: 'pointer',
-                                color: '#334155',
-                                fontSize: '14px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px',
-                                borderBottom: '1px solid #f1f5f6',
+                                width: '36px',
+                                height: '36px',
+                                borderRadius: '50%',
+                                objectFit: 'cover',
                               }}
-                            >
-                              ↩️ Reply
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteForEveryone(msg.id);
-                              }}
-                              style={{
-                                width: '100%',
-                                padding: '10px 14px',
-                                textAlign: 'left',
-                                background: 'none',
-                                border: 'none',
-                                cursor: 'pointer',
-                                color: '#ef4444',
-                                fontSize: '14px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px',
-                              }}
-                            >
-                              🗑️ Delete for Everyone
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {!isOwn && !isDeleted && (
-                      <div className="message-menu-container" style={{ position: 'absolute', top: '6px', right: '6px', opacity: 0.4 }}>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setReplyingTo(msg);
-                            messageInputRef.current?.focus();
-                          }}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            color: '#64748b',
-                            cursor: 'pointer',
-                            fontSize: '16px',
-                            padding: '2px 4px',
-                            borderRadius: '4px',
-                          }}
-                          onMouseOver={(e) => {
-                            e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.1)';
-                            e.currentTarget.parentElement!.style.opacity = '1';
-                          }}
-                          onMouseOut={(e) => {
-                            e.currentTarget.style.backgroundColor = 'transparent';
-                            e.currentTarget.parentElement!.style.opacity = '0.4';
-                          }}
-                        >
-                          ⋮
-                        </button>
-                      </div>
-                    )}
-                    {isDeleted ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontSize: '12px' }}>🗑️</span>
-                        <span>Message deleted</span>
-                      </div>
-                    ) : msg.file_url ? (
-                      (() => {
-                        const url = msg.file_url;
-                        if (isImageUrl(url)) {
-                          return (
-                            <div style={{ position: 'relative', width: '300px', height: '300px', borderRadius: '8px', overflow: 'hidden' }}>
-                              <Image
-                                src={url}
-                                alt="Attachment"
-                                fill
-                                style={{ objectFit: 'cover', cursor: 'pointer' }}
-                                onClick={() => window.open(url, '_blank')}
-                              />
-                            </div>
-                          );
-                        }
-                        if (isPdfUrl(url)) {
-                          return (
+                              unoptimized
+                            />
+                          ) : (
                             <div
                               style={{
+                                width: '36px',
+                                height: '36px',
+                                borderRadius: '50%',
+                                backgroundColor: '#e0e7ff',
                                 display: 'flex',
                                 alignItems: 'center',
-                                gap: '8px',
-                                padding: '8px',
-                                backgroundColor: 'white',
-                                border: '1px solid #e2e8f0',
-                                borderRadius: '8px',
+                                justifyContent: 'center',
+                                fontWeight: '600',
+                                fontSize: '14px',
+                                color: '#4f46e5',
                               }}
                             >
-                              <div style={{ fontSize: '20px', color: '#ef4444' }}>📄</div>
-                              <div style={{ flex: 1 }}>
-                                <div style={{ fontWeight: '500', fontSize: '12px' }}>{msg.content}</div>
-                                <div style={{ fontSize: '10px', color: '#64748b' }}>PDF Document</div>
-                              </div>
+                              {getInitials(msg.sender.full_name)}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      <div style={{ maxWidth: '80%', position: 'relative' }}>
+                        {repliedMsg && !repliedMsg.deleted_for_everyone && (
+                          <div
+                            style={{
+                              backgroundColor: '#f1f5f6',
+                              borderRadius: '10px',
+                              padding: '6px 10px',
+                              marginBottom: '6px',
+                              fontSize: '12px',
+                              borderLeft: '2px solid #94a3b8',
+                              cursor: 'pointer',
+                            }}
+                            onClick={() => {
+                              const el = messageRefs.current.get(repliedMsg.id);
+                              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            }}
+                          >
+                            <div style={{ fontWeight: '500', color: '#334155' }}>{repliedMsg.sender.full_name}</div>
+                            <div style={{ color: '#64748b' }}>
+                              {repliedMsg.content.substring(0, 40)}
+                              {repliedMsg.content.length > 40 ? '...' : ''}
+                            </div>
+                          </div>
+                        )}
+
+                        <div
+                          onMouseDown={(e) => !isDeleted && handleLongPressStart(msg.id, isOwn, e)}
+                          onMouseUp={handleLongPressEnd}
+                          onMouseLeave={handleLongPressEnd}
+                          onTouchStart={(e) => !isDeleted && handleLongPressStart(msg.id, isOwn, e)}
+                          onTouchEnd={handleLongPressEnd}
+                          onTouchCancel={handleLongPressEnd}
+                          style={{
+                            padding: '10px 14px',
+                            borderRadius: isOwn ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+                            backgroundColor: isDeleted ? '#f3f4f6' : isOwn ? '#e0e7ff' : '#f1f5f6',
+                            color: isDeleted ? '#9ca3af' : isOwn ? '#312e81' : '#1e293b',
+                            fontSize: '14px',
+                            lineHeight: '1.4',
+                            position: 'relative',
+                            paddingRight: '30px',
+                            overflowWrap: 'break-word',
+                            cursor: isDeleted ? 'default' : 'pointer',
+                            fontStyle: isDeleted ? 'italic' : 'normal',
+                          }}
+                        >
+                          {!isDeleted && (
+                            <div
+                              style={{
+                                fontSize: '12px',
+                                fontWeight: '600',
+                                color: '#334155',
+                                marginBottom: '4px',
+                                lineHeight: 1.2,
+                              }}
+                            >
+                              {isOwn ? 'Me' : msg.sender.full_name}
+                            </div>
+                          )}
+
+                          {isOwn && !isDeleted && (
+                            <div className="message-menu-container" style={{ position: 'absolute', top: '6px', right: '6px', opacity: 0.4 }}>
                               <button
-                                onClick={() => window.open(url, '_blank')}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setShowMessageMenu(showMessageMenu === msg.id ? null : msg.id);
+                                }}
                                 style={{
                                   background: 'none',
                                   border: 'none',
-                                  color: '#4f46e5',
+                                  color: '#64748b',
                                   cursor: 'pointer',
-                                  fontSize: '12px',
+                                  fontSize: '16px',
+                                  padding: '2px 4px',
+                                  borderRadius: '4px',
+                                }}
+                                onMouseOver={(e) => {
+                                  e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.1)';
+                                  e.currentTarget.parentElement!.style.opacity = '1';
+                                }}
+                                onMouseOut={(e) => {
+                                  e.currentTarget.style.backgroundColor = 'transparent';
+                                  if (showMessageMenu !== msg.id) {
+                                    e.currentTarget.parentElement!.style.opacity = '0';
+                                  }
                                 }}
                               >
-                                Open
+                                ⋮
+                              </button>
+                              {showMessageMenu === msg.id && (
+                                <div
+                                  style={{
+                                    position: 'absolute',
+                                    top: '100%',
+                                    right: 0,
+                                    backgroundColor: 'white',
+                                    borderRadius: '8px',
+                                    boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+                                    zIndex: 10,
+                                    minWidth: '140px',
+                                    overflow: 'hidden',
+                                  }}
+                                >
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setReplyingTo(msg);
+                                      setShowMessageMenu(null);
+                                      messageInputRef.current?.focus();
+                                    }}
+                                    style={{
+                                      width: '100%',
+                                      padding: '10px 14px',
+                                      textAlign: 'left',
+                                      background: 'none',
+                                      border: 'none',
+                                      cursor: 'pointer',
+                                      color: '#334155',
+                                      fontSize: '14px',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '8px',
+                                      borderBottom: '1px solid #f1f5f6',
+                                    }}
+                                  >
+                                    ↩️ Reply
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteForEveryone(msg.id);
+                                    }}
+                                    style={{
+                                      width: '100%',
+                                      padding: '10px 14px',
+                                      textAlign: 'left',
+                                      background: 'none',
+                                      border: 'none',
+                                      cursor: 'pointer',
+                                      color: '#ef4444',
+                                      fontSize: '14px',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '8px',
+                                    }}
+                                  >
+                                    🗑️ Delete for Everyone
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {!isOwn && !isDeleted && (
+                            <div className="message-menu-container" style={{ position: 'absolute', top: '6px', right: '6px', opacity: 0.4 }}>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setReplyingTo(msg);
+                                  messageInputRef.current?.focus();
+                                }}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  color: '#64748b',
+                                  cursor: 'pointer',
+                                  fontSize: '16px',
+                                  padding: '2px 4px',
+                                  borderRadius: '4px',
+                                }}
+                                onMouseOver={(e) => {
+                                  e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.1)';
+                                  e.currentTarget.parentElement!.style.opacity = '1';
+                                }}
+                                onMouseOut={(e) => {
+                                  e.currentTarget.style.backgroundColor = 'transparent';
+                                  e.currentTarget.parentElement!.style.opacity = '0.4';
+                                }}
+                              >
+                                ⋮
                               </button>
                             </div>
-                          );
-                        }
-                        return (
-                          <a
-                            href={url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{
-                              color: '#4f46e5',
-                              textDecoration: 'underline',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '6px',
-                              fontSize: '14px',
-                            }}
-                          >
-                            📎 {msg.content}
-                          </a>
-                        );
-                      })()
-                    ) : (
-                      <div>{msg.content}</div>
-                    )}
-                    {Object.keys(reactionCounts).length > 0 && (
-                      <div style={{ display: 'flex', gap: '2px', marginTop: '6px', flexWrap: 'wrap' }}>
-                        {Object.entries(reactionCounts).map(([emoji, count]) => (
+                          )}
+
+                          {isDeleted ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span style={{ fontSize: '12px' }}>🗑️</span>
+                              <span>Message deleted</span>
+                            </div>
+                          ) : msg.file_url ? (
+                            (() => {
+                              const url = msg.file_url;
+                              if (isImageUrl(url)) {
+                                return (
+                                  <div style={{ position: 'relative', width: '300px', height: '300px', borderRadius: '8px', overflow: 'hidden' }}>
+                                    <Image
+                                      src={url}
+                                      alt="Attachment"
+                                      fill
+                                      style={{ objectFit: 'cover', cursor: 'pointer' }}
+                                      onClick={() => window.open(url, '_blank')}
+                                    />
+                                  </div>
+                                );
+                              }
+                              if (isPdfUrl(url)) {
+                                return (
+                                  <div
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '8px',
+                                      padding: '8px',
+                                      backgroundColor: 'white',
+                                      border: '1px solid #e2e8f0',
+                                      borderRadius: '8px',
+                                    }}
+                                  >
+                                    <div style={{ fontSize: '20px', color: '#ef4444' }}>📄</div>
+                                    <div style={{ flex: 1 }}>
+                                      <div style={{ fontWeight: '500', fontSize: '12px' }}>{msg.content}</div>
+                                      <div style={{ fontSize: '10px', color: '#64748b' }}>PDF Document</div>
+                                    </div>
+                                    <button
+                                      onClick={() => window.open(url, '_blank')}
+                                      style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        color: '#4f46e5',
+                                        cursor: 'pointer',
+                                        fontSize: '12px',
+                                      }}
+                                    >
+                                      Open
+                                    </button>
+                                  </div>
+                                );
+                              }
+                              return (
+                                <a
+                                  href={url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{
+                                    color: '#4f46e5',
+                                    textDecoration: 'underline',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    fontSize: '14px',
+                                  }}
+                                >
+                                  📎 {msg.content}
+                                </a>
+                              );
+                            })()
+                          ) : (
+                            <div>{msg.content}</div>
+                          )}
+
+                          {Object.keys(reactionCounts).length > 0 && (
+                            <div style={{ display: 'flex', gap: '2px', marginTop: '6px', flexWrap: 'wrap' }}>
+                              {Object.entries(reactionCounts).map(([emoji, count]) => (
+                                <div
+                                  key={emoji}
+                                  style={{
+                                    backgroundColor: 'rgba(255,255,255,0.9)',
+                                    borderRadius: '10px',
+                                    padding: '1px 4px',
+                                    fontSize: '10px',
+                                    border: '1px solid #e2e8f0',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '1px',
+                                  }}
+                                >
+                                  <span>{emoji}</span>
+                                  <span style={{ color: '#64748b', fontWeight: '500' }}>{count}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
                           <div
-                            key={emoji}
                             style={{
-                              backgroundColor: 'rgba(255,255,255,0.9)',
-                              borderRadius: '10px',
-                              padding: '1px 4px',
                               fontSize: '10px',
-                              border: '1px solid #e2e8f0',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '1px',
+                              textAlign: 'right',
+                              marginTop: '4px',
+                              color: isDeleted ? '#9ca3af' : isOwn ? '#4f46e5' : '#94a3b8',
                             }}
                           >
-                            <span>{emoji}</span>
-                            <span style={{ color: '#64748b', fontWeight: '500' }}>{count}</span>
+                            {formatTimeOnly(msg.created_at)}
                           </div>
-                        ))}
+                        </div>
                       </div>
-                    )}
-                    <div
-                      style={{
-                        fontSize: '10px',
-                        textAlign: 'right',
-                        marginTop: '4px',
-                        color: isDeleted ? '#9ca3af' : isOwn ? '#4f46e5' : '#94a3b8',
-                      }}
-                    >
-                      {formatTime(msg.created_at)}
                     </div>
                   </div>
-                </div>
-              </div>
-            );
-          })
+                );
+              })}
+            </div>
+          ))
         )}
+
         <div ref={messagesEndRef} />
+
         {isOtherUserTyping && (
           <div
             style={{
@@ -1112,6 +1214,7 @@ export default function CommunityChatPage() {
             )}
           </button>
         </div>
+
         {showEmojiPicker && (
           <div
             className="emoji-picker-container"
@@ -1140,6 +1243,7 @@ export default function CommunityChatPage() {
           </div>
         )}
       </form>
+
       <CallOverlay />
       {!isMobileView && <FooterNav />}
     </div>

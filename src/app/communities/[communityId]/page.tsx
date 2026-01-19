@@ -227,6 +227,10 @@ export default function CommunityDetailPage() {
   const kebabMenuRef = useRef<HTMLDivElement>(null);
   const [memberStatusResolved, setMemberStatusResolved] = useState(false); // 👈 NEW
   const [showFullDescription, setShowFullDescription] = useState(false);
+  const [newPostsCount, setNewPostsCount] = useState<number>(0);
+const [newMessagesCount, setNewMessagesCount] = useState<number>(0);
+  
+  
   // Inject global styles once
   useEffect(() => {
     if (typeof document !== 'undefined') {
@@ -301,166 +305,246 @@ export default function CommunityDetailPage() {
     };
   }, [isKebabOpen]);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!communityId) return;
-      try {
-        setLoading(true);
-        setError(null);
+ useEffect(() => {
+  const fetchData = async () => {
+    if (!communityId) return;
+    try {
+      setLoading(true);
+      setError(null);
 
-        // 1. Fetch community data
-        const { data: communityData, error: communityError } = await supabase
-          .from('communities')
-          .select('*')
-          .eq('id', communityId)
-          .single();
-        if (communityError) throw new Error(`Failed to fetch community: ${communityError.message}`);
-        if (!communityData) throw new Error('Community not found');
+      // 1. Fetch community data
+      const { data: communityData, error: communityError } = await supabase
+        .from('communities')
+        .select('*')
+        .eq('id', communityId)
+        .single();
+      if (communityError) throw new Error(`Failed to fetch community: ${communityError.message}`);
+      if (!communityData) throw new Error('Community not found');
 
-        let coverPhotoUrl = communityData.cover_photo_url;
-        if (!coverPhotoUrl) {
-          // Only add timestamp after an actual upload
-          const baseBannerUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/communities/${communityId}/banner.jpg`;
+      let coverPhotoUrl = communityData.cover_photo_url;
+      if (!coverPhotoUrl) {
+        const baseBannerUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/communities/${communityId}/banner.jpg`;
+        coverPhotoUrl = baseBannerUrl;
+      }
 
-          // On initial load, use base URL without timestamp
-          coverPhotoUrl = baseBannerUrl;
-        }
+      // 2. Count total members
+      const { count: memberCount, error: memberCountError } = await supabase
+        .from('community_members')
+        .select('*', { count: 'exact', head: true })
+        .eq('community_id', communityId);
+      if (memberCountError) throw new Error(`Failed to count members: ${memberCountError.message}`);
 
-        // 2. Count total members
-        const { count, error: countError } = await supabase
-          .from('community_members')
-          .select('*', { count: 'exact', head: true })
-          .eq('community_id', communityId);
-        if (countError) throw new Error(`Failed to count members: ${countError.message}`);
+      // 3. Fetch members (needed for UI rendering)
+      const { data: membersData, error: membersError } = await supabase
+        .from('community_members')
+        .select(`
+          role,
+          joined_at,
+          user_id,
+          user:profiles!left (
+            id,
+            full_name,
+            avatar_url,
+            last_online,
+            is_anonymous
+          )
+        `)
+        .eq('community_id', communityId)
+        .order('joined_at', { ascending: true });
+      if (membersError) throw membersError;
 
-        // 3. Fetch members
-        const { data: membersData, error: membersError } = await supabase
-          .from('community_members')
-          .select(`
-            role,
-            joined_at,
-            user_id,
-            user:profiles!left (
-              id,
-              full_name,
-              avatar_url,
-              last_online,
-              is_anonymous
-            )
-          `)
-          .eq('community_id', communityId)
-          .order('joined_at', { ascending: true });
-        if (membersError) throw membersError;
+      // 4. Fetch precomputed online count from optimized view
+      let onlineCount = 0;
+      const { data: countData, error: viewError } = await supabase
+        .from('community_online_counts')
+        .select('online_count')
+        .eq('community_id', communityId)
+        .single();
 
-        // 4. Calculate online count
-        const onlineCount = membersData.filter((member: CommunityMemberWithProfile) => {
+      if (viewError) {
+        console.warn('Falling back to client-side online count:', viewError);
+        // Fallback: compute on client (less efficient)
+        onlineCount = membersData.filter((member: CommunityMemberWithProfile) => {
           const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
           return isUserOnline(profile?.last_online || null);
         }).length;
-
-        const communityWithPhoto = {
-          ...communityData,
-          cover_photo_url: coverPhotoUrl,
-          member_count: count || 0,
-          online_count: onlineCount,
-        };
-        setCommunity(communityWithPhoto);
-
-        // 5. Format members
-        const formattedMembers = membersData.map((member: CommunityMemberWithProfile) => {
-          const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
-          const isAnonymous = profile?.is_anonymous || false;
-          return {
-            user_id: member.user_id,
-            username: isAnonymous ? 'Anonymous' : profile?.full_name || 'Anonymous',
-            avatar_url: isAnonymous ? null : profile?.avatar_url || null,
-            last_online: profile?.last_online || null,
-            is_online: isUserOnline(profile?.last_online || null),
-            role: member.role,
-            joined_at: member.joined_at,
-          };
-        });
-        setMembers(formattedMembers);
-
-        // 6. Check membership status
-        let isCurrentUserMember = false;
-        let currentUserRole: typeof userRole = null;
-        if (user) {
-          const { data: memberData } = await supabase
-            .from('community_members')
-            .select('role')
-            .eq('community_id', communityId)
-            .eq('user_id', user.id)
-            .single();
-          if (memberData) {
-            isCurrentUserMember = true;
-            currentUserRole = memberData.role;
-          }
-        }
-        setIsMember(isCurrentUserMember);
-        setUserRole(currentUserRole);
-        setMemberStatusResolved(true); // 👈 Critical: only now do we know member status
-
-        // 7. Fetch posts
-        const { data: postData, error: postError } = await supabase
-          .from('community_posts')
-          .select(`
-            id,
-            content,
-            created_at,
-            community_id,
-            media_url,
-            media_urls,
-            likes_count,
-            comments_count,
-            user_id
-          `)
-          .eq('community_id', communityId)
-          .order('created_at', { ascending: false });
-        if (postError) throw postError;
-
-        const userIds = [...new Set(postData.map((post: CommunityPost) => post.user_id))];
-        const { data: profilesData } = await supabase
-          .from('profiles')
-          .select('id, full_name, avatar_url, is_anonymous')
-          .in('id', userIds);
-
-        const profilesMap = new Map();
-        profilesData?.forEach((profile: Profile) => {
-          profilesMap.set(profile.id, profile);
-        });
-
-        const postsWithLikes = postData.map((post: CommunityPost) => {
-          const userProfile = profilesMap.get(post.user_id) || {};
-          const isAnonymous = userProfile.is_anonymous || false;
-          return {
-            id: post.id,
-            content: post.content,
-            media_url: post.media_url,
-            media_urls: post.media_urls,
-            created_at: post.created_at,
-            user_id: post.user_id,
-            username: isAnonymous ? 'Anonymous' : userProfile.full_name || 'Anonymous',
-            avatar_url: isAnonymous ? null : userProfile.avatar_url || null,
-            community_id: post.community_id,
-            likes_count: post.likes_count || 0,
-            comments_count: post.comments_count || 0,
-            is_liked: false,
-          };
-        });
-
-        setPosts(postsWithLikes);
-      } catch (err) {
-        console.error('Error fetching community:', err);
-        const message = err instanceof Error ? err.message : 'Failed to load community data';
-        setError(message);
-      } finally {
-        setLoading(false);
+      } else {
+        onlineCount = countData?.online_count ?? 0;
       }
-    };
 
-    fetchData();
-  }, [communityId, user, supabase, isUserOnline]);
+      // 5. Build community object
+      const communityWithPhoto: Community = {
+        ...communityData,
+        cover_photo_url: coverPhotoUrl,
+        member_count: memberCount || 0,
+        online_count: onlineCount,
+      };
+      setCommunity(communityWithPhoto);
+
+      // 6. Format members for UI
+      const formattedMembers = membersData.map((member: CommunityMemberWithProfile) => {
+        const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
+        const isAnonymous = profile?.is_anonymous || false;
+        return {
+          user_id: member.user_id,
+          username: isAnonymous ? 'Anonymous' : profile?.full_name || 'Anonymous',
+          avatar_url: isAnonymous ? null : profile?.avatar_url || null,
+          last_online: profile?.last_online || null,
+          is_online: isUserOnline(profile?.last_online || null),
+          role: member.role,
+          joined_at: member.joined_at,
+        };
+      });
+      setMembers(formattedMembers);
+
+      // 7. Check membership status
+      let isCurrentUserMember = false;
+      let currentUserRole: typeof userRole = null;
+      if (user) {
+        const { data: memberData } = await supabase
+          .from('community_members')
+          .select('role')
+          .eq('community_id', communityId)
+          .eq('user_id', user.id)
+          .single();
+        if (memberData) {
+          isCurrentUserMember = true;
+          currentUserRole = memberData.role;
+        }
+      }
+      setIsMember(isCurrentUserMember);
+      setUserRole(currentUserRole);
+      setMemberStatusResolved(true);
+
+      // 8. Fetch posts
+      const { data: postData, error: postError } = await supabase
+        .from('community_posts')
+        .select(`
+          id,
+          content,
+          created_at,
+          community_id,
+          media_url,
+          media_urls,
+          likes_count,
+          comments_count,
+          user_id
+        `)
+        .eq('community_id', communityId)
+        .order('created_at', { ascending: false });
+      if (postError) throw postError;
+
+      const userIds = [...new Set(postData.map((post: CommunityPost) => post.user_id))];
+      const { data: profilesData } = await supabase
+        .from('profiles')
+        .select('id, full_name, avatar_url, is_anonymous')
+        .in('id', userIds);
+
+      const profilesMap = new Map();
+      profilesData?.forEach((profile: Profile) => {
+        profilesMap.set(profile.id, profile);
+      });
+
+      const postsWithLikes = postData.map((post: CommunityPost) => {
+        const userProfile = profilesMap.get(post.user_id) || {};
+        const isAnonymous = userProfile.is_anonymous || false;
+        return {
+          id: post.id,
+          content: post.content,
+          media_url: post.media_url,
+          media_urls: post.media_urls,
+          created_at: post.created_at,
+          user_id: post.user_id,
+          username: isAnonymous ? 'Anonymous' : userProfile.full_name || 'Anonymous',
+          avatar_url: isAnonymous ? null : userProfile.avatar_url || null,
+          community_id: post.community_id,
+          likes_count: post.likes_count || 0,
+          comments_count: post.comments_count || 0,
+          is_liked: false,
+        };
+      });
+      setPosts(postsWithLikes);
+
+// === NEW: Track last view timestamps and count new posts/messages ===
+let lastFeedView: string | null = null;
+let lastChatView: string | null = null;
+let newPostsCount = 0;
+let newMessagesCount = 0;
+
+if (user) {
+  const { data: viewData } = await supabase
+    .from('community_user_views')
+    .select('last_feed_view, last_chat_view')
+    .eq('user_id', user.id)
+    .eq('community_id', communityId)
+    .single();
+
+  if (viewData) {
+    lastFeedView = viewData.last_feed_view;
+    lastChatView = viewData.last_chat_view;
+  } else {
+    // Initialize on first visit
+    await supabase.from('community_user_views').insert({
+      user_id: user.id,
+      community_id: communityId,
+      last_feed_view: new Date().toISOString(),
+      last_chat_view: new Date().toISOString(),
+    });
+    lastFeedView = lastChatView = new Date().toISOString();
+  }
+
+  // Count new posts since last feed view
+  const { count: postCount } = await supabase
+    .from('community_posts')
+    .select('*', { count: 'exact', head: true })
+    .eq('community_id', communityId)
+    .gt('created_at', lastFeedView || '1970-01-01');
+  newPostsCount = postCount || 0;
+
+  // Count new messages since last chat view
+  const { count: msgCount } = await supabase
+    .from('community_messages')
+    .select('*', { count: 'exact', head: true })
+    .eq('community_id', communityId)
+    .gt('created_at', lastChatView || '1970-01-01');
+  newMessagesCount = msgCount || 0;
+
+  // Update last_feed_view now that user has loaded the page
+  await supabase
+    .from('community_user_views')
+    .upsert(
+      {
+        user_id: user.id,
+        community_id: communityId,
+        last_feed_view: new Date().toISOString(),
+      },
+      { onConflict: 'user_id,community_id' }
+    );
+
+    setNewPostsCount(newPostsCount);
+setNewMessagesCount(newMessagesCount);
+}
+
+// You can store newPostsCount / newMessagesCount in state later if needed
+// For now, just ensure the DB logic runs without breaking
+// ==============================================================
+
+
+
+    } catch (err) {
+      console.error('Error fetching community:', err);
+      const message = err instanceof Error ? err.message : 'Failed to load community data';
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
+  
+
+  fetchData();
+}, [communityId, user, supabase, isUserOnline]);
 
   useEffect(() => {
     if (targetPostId && posts.some((p) => p.id === targetPostId)) {
@@ -487,43 +571,56 @@ export default function CommunityDetailPage() {
   }, [targetPostId, posts, router]);
 
   // Refresh members & online count every 30s
-  useEffect(() => {
-    if (!communityId) return;
-    const fetchMembersAndOnlineCount = async () => {
-      const { data: membersData, error } = await supabase
-        .from('community_members')
-        .select(`
-          role,
-          joined_at,
-          user_id,
-          user:profiles!left (id, full_name, avatar_url, last_online, is_anonymous)
-        `)
-        .eq('community_id', communityId);
-      if (error) {
-        console.error('Failed to refresh members:', error);
-        return;
-      }
-      const formattedMembers = membersData.map((member) => {
-        const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
-        const isAnonymous = profile?.is_anonymous || false;
-        return {
-          user_id: member.user_id,
-          username: isAnonymous ? 'Anonymous' : profile?.full_name || 'Anonymous',
-          avatar_url: isAnonymous ? null : profile?.avatar_url || null,
-          last_online: profile?.last_online || null,
-          is_online: isUserOnline(profile?.last_online || null),
-          role: member.role,
-          joined_at: member.joined_at,
-        };
-      });
-      setMembers(formattedMembers);
-      const newOnlineCount = formattedMembers.filter((m) => m.is_online).length;
-      setCommunity((prev) => (prev ? { ...prev, online_count: newOnlineCount } : null));
-    };
-    fetchMembersAndOnlineCount();
-    const interval = setInterval(fetchMembersAndOnlineCount, 30_000);
-    return () => clearInterval(interval);
-  }, [communityId, supabase, isUserOnline]);
+  // Refresh members & online count every 30s
+useEffect(() => {
+  if (!communityId) return;
+
+  const fetchMembersAndOnlineCount = async () => {
+    // 1. Fetch members
+    const { data: membersData, error } = await supabase
+      .from('community_members')
+      .select(`
+        role,
+        joined_at,
+        user_id,
+        user:profiles!left (id, full_name, avatar_url, last_online, is_anonymous)
+      `)
+      .eq('community_id', communityId);
+    if (error) {
+      console.error('Failed to refresh members:', error);
+      return;
+    }
+
+    const formattedMembers = membersData.map((member) => {
+      const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
+      const isAnonymous = profile?.is_anonymous || false;
+      return {
+        user_id: member.user_id,
+        username: isAnonymous ? 'Anonymous' : profile?.full_name || 'Anonymous',
+        avatar_url: isAnonymous ? null : profile?.avatar_url || null,
+        last_online: profile?.last_online || null,
+        is_online: isUserOnline(profile?.last_online || null),
+        role: member.role,
+        joined_at: member.joined_at,
+      };
+    });
+    setMembers(formattedMembers);
+
+    // 2. Fetch online count from view
+    const { data: countData } = await supabase
+      .from('community_online_counts')
+      .select('online_count')
+      .eq('community_id', communityId)
+      .single();
+
+    const newOnlineCount = countData?.online_count ?? 0;
+    setCommunity((prev) => (prev ? { ...prev, online_count: newOnlineCount } : null));
+  };
+
+  fetchMembersAndOnlineCount();
+  const interval = setInterval(fetchMembersAndOnlineCount, 30_000);
+  return () => clearInterval(interval);
+}, [communityId, supabase, isUserOnline]);
 
   // Update last_online every 45s
   useEffect(() => {
@@ -1249,10 +1346,61 @@ export default function CommunityDetailPage() {
         <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
           <Heart size={16} style={{ color: baseColors.accent }} /> {community.online_count} online
         </span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-          <MessageCircle size={16} style={{ color: '#3b82f6' }} /> {posts.length} posts
-        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', position: 'relative' }}>
+  <MessageCircle size={16} style={{ color: '#3b82f6' }} /> {posts.length} posts
+  {newPostsCount > 0 && (
+    <span
+      style={{
+        background: '#ef4444',
+        color: 'white',
+        fontSize: '0.65rem',
+        fontWeight: 'bold',
+        borderRadius: '10px',
+        padding: '0 4px',
+        marginLeft: '4px',
+      }}
+    >
+      +{newPostsCount}
+    </span>
+  )}
+</span>
       </div>
+
+      {/* Chat Button with New Messages Badge */}
+{isMember && (
+  <Link
+    href={`/communities/${communityId}/chat`}
+    style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '0.25rem',
+      background: '#e0e7ff',
+      color: '#4f46e5',
+      padding: '0.25rem 0.5rem',
+      borderRadius: borderRadius.md,
+      textDecoration: 'none',
+      fontSize: '0.875rem',
+      width: 'fit-content',
+    }}
+  >
+    💬 Chat
+    {newMessagesCount > 0 && (
+      <span
+        style={{
+          background: '#ef4444',
+          color: 'white',
+          fontSize: '0.65rem',
+          fontWeight: 'bold',
+          borderRadius: '10px',
+          padding: '0 4px',
+          marginLeft: '4px',
+        }}
+      >
+        {newMessagesCount}
+      </span>
+    )}
+  </Link>
+)}
 
       {/* Action Buttons */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
