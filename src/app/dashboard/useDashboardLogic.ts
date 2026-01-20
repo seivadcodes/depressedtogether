@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { v4 as uuidv4 } from 'uuid';
 import { createClient } from '@/lib/supabase';
 import { usePresence } from '@/hooks/usePresence';
+import { getPublicImageUrl } from '@/utils/imageUtils';
 
 export type GriefType =
   | 'parent'
@@ -35,7 +36,7 @@ export interface ProfileUpdate {
 export interface UserProfile {
   id: string;
   griefTypes: GriefType[];
-  avatarUrl?: string;
+   avatarUrl: string | null; 
   fullName: string;      // Added full name
   email?: string;
   about?: string;       // Added email for fallback
@@ -164,15 +165,16 @@ export function useDashboardLogic(): DashboardUIProps {
         router.push('/auth');
         return;
       }
+const avatarUrl = data.avatar_url ? getPublicImageUrl(data.avatar_url) : null;
 
-      setProfile({
-        id: data.id,
-        griefTypes: data.grief_types || [],
-        avatarUrl: data.avatar_url,
-        fullName: data.full_name || session.user.email?.split('@')[0] || 'Friend',
-        email: session.user.email || data.email,
-        about: data.about || '',
-      });
+setProfile({
+  id: data.id,
+  griefTypes: data.grief_types || [],
+  avatarUrl,
+  fullName: data.full_name || session.user.email?.split('@')[0] || 'Friend',
+  email: session.user.email || data.email,
+  about: data.about || '',
+});
 
        setAboutText(data.about || '');
 
@@ -253,7 +255,9 @@ export function useDashboardLogic(): DashboardUIProps {
   user: p.profiles ? {
   id: p.profiles.id,
   fullName: p.profiles.full_name || null,
-  avatarUrl: p.profiles.avatar_url,
+  avatarUrl: p.profiles.avatar_url
+    ? supabase.storage.from('avatars').getPublicUrl(p.profiles.avatar_url).data.publicUrl
+    : null,
   isAnonymous: p.profiles.is_anonymous ?? false,
 } : undefined
 }));
@@ -366,11 +370,7 @@ export function useDashboardLogic(): DashboardUIProps {
 
           if (uploadError) throw uploadError;
 
-          const { data: publicUrlData } = supabase.storage
-            .from('posts')
-            .getPublicUrl(filePath);
-
-          return publicUrlData.publicUrl;
+         return filePath;
         });
 
         mediaUrls = await Promise.all(uploadPromises);
@@ -395,7 +395,7 @@ export function useDashboardLogic(): DashboardUIProps {
 
       if (postError) throw postError;
 
-    const { data: newPostData, error: fetchError } = await supabase
+   const { data: newPostData, error: fetchError } = await supabase
   .from('posts')
   .select(`
     *,
@@ -423,16 +423,17 @@ export function useDashboardLogic(): DashboardUIProps {
   createdAt: new Date(newPostData.created_at),
   likes: newPostData.likes_count || 0,
   commentsCount: newPostData.comments_count || 0,
-  isLiked: false, // ✅ new posts aren't liked yet
+  isLiked: false,
   isAnonymous: newPostData.is_anonymous,
   user: newPostData.profiles ? {
-  id: newPostData.profiles.id,
-  fullName: newPostData.profiles.full_name,
-  avatarUrl: newPostData.profiles.avatar_url,
-  isAnonymous: newPostData.profiles.is_anonymous ?? false,
-} : undefined
+    id: newPostData.profiles.id,
+    fullName: newPostData.profiles.full_name,
+    avatarUrl: newPostData.profiles.avatar_url
+      ? supabase.storage.from('avatars').getPublicUrl(newPostData.profiles.avatar_url).data.publicUrl
+      : null,
+    isAnonymous: newPostData.profiles.is_anonymous ?? false,
+  } : undefined
 };
-
       setPosts(prev => [newPost, ...prev]);
 
       setNewPostText('');
@@ -528,14 +529,11 @@ export function useDashboardLogic(): DashboardUIProps {
       // 2. Get public URL
       // ✅ CORRECT
       // ✅ Correct
-      const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
-      const avatarUrl = data.publicUrl;
-
-      // 3. Save URL to profile in DB
-      await saveProfileToDB({ avatar_url: avatarUrl });
-
+ // Save the RELATIVE path, not the full URL
+await saveProfileToDB({ avatar_url: filePath }); // e.g., "avatars/user123/abc.jpg"
       // 4. Update local profile state
-      setProfile((prev) => (prev ? { ...prev, avatarUrl } : null));
+     const publicUrl = supabase.storage.from('avatars').getPublicUrl(filePath).data.publicUrl;
+setProfile((prev) => (prev ? { ...prev, avatarUrl: publicUrl } : null));
       setError(null);
     } catch (err) {
       console.error('Avatar upload failed:', err);

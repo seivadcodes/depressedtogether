@@ -51,24 +51,33 @@ export default function Header() {
   // Fetch profile
   useEffect(() => {
     const fetchProfile = async () => {
-      if (!user) {
-        setProfile(null);
-        setProfileLoading(false);
-        return;
-      }
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('full_name, avatar_url')
-        .eq('id', user.id)
-        .maybeSingle();
-      if (error) {
-        console.error('Failed to load profile in header:', error);
-        setProfile(null);
-      } else {
-        setProfile(data);
-      }
-      setProfileLoading(false);
-    };
+  if (!user) {
+    setProfile(null);
+    setProfileLoading(false);
+    return;
+  }
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('full_name, avatar_url')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Failed to load profile in header:', error);
+    setProfile(null);
+  } else {
+    // ✅ Convert storage path to public URL
+    const avatarUrl = data?.avatar_url
+  ? `/api/media/avatars/${data.avatar_url}`
+  : undefined;
+
+    setProfile({
+      full_name: data?.full_name,
+      avatar_url: avatarUrl, // ✅ now a real URL or undefined
+    });
+  }
+  setProfileLoading(false);
+};
     fetchProfile();
   }, [user, supabase]);
 

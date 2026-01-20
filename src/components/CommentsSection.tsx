@@ -22,7 +22,7 @@ import { formatDistanceToNow } from 'date-fns';
 import ReportModal from '@/components/modals/ReportModal';
 import Picker, { Theme } from 'emoji-picker-react';
 import Link from 'next/link';
-
+import { getPublicImageUrl } from '@/utils/imageUtils';
 interface Comment {
   id: string;
   user_id: string;
@@ -120,28 +120,32 @@ export function CommentsSection({
   }, [openCommentMenu]);
 
   // Fetch current user avatar
-  useEffect(() => {
-    const fetchCurrentAvatar = async () => {
-      if (!currentUser.id) return;
-      try {
-        const { data: profileData, error } = await supabase
-  .from('profiles')
-  .select('avatar_url')
-  .eq('id', currentUser.id)
-  .single();
-        if (error) {
-          console.warn('Failed to fetch avatar:', error);
-          setCurrentAvatar(null);
-        } else {
-          setCurrentAvatar(profileData?.avatar_url || null);
-        }
-      } catch (err) {
-        console.error('Unexpected error fetching avatar:', err);
+ // Fetch current user avatar and convert to public URL if needed
+// In CommentsSection.tsx
+useEffect(() => {
+  const fetchCurrentAvatar = async () => {
+    if (!currentUser.id) return;
+    try {
+      const { data: profileData, error } = await supabase
+        .from('profiles')
+        .select('avatar_url')
+        .eq('id', currentUser.id)
+        .single();
+      if (error || !profileData?.avatar_url) {
         setCurrentAvatar(null);
+        return;
       }
-    };
-    fetchCurrentAvatar();
-  }, [currentUser.id, supabase]);
+      
+      // Use utility function
+      const publicUrl = getPublicImageUrl(profileData.avatar_url);
+      setCurrentAvatar(publicUrl);
+    } catch (err) {
+      console.error('Unexpected error fetching avatar:', err);
+      setCurrentAvatar(null);
+    }
+  };
+  fetchCurrentAvatar();
+}, [currentUser.id, supabase]);
 
   // Post like logic
   const loadPostLikeState = useCallback(async () => {
@@ -333,59 +337,52 @@ export function CommentsSection({
   };
 
   const loadComments = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('comments')
-        .select(`
-          id,
-          user_id,
-          content,
-          created_at,
-          likes_count,
-          is_anonymous,
-          author_name,
-          author_avatar_url,
-          is_deleted,
-          parent_comment_id,
-          replies_count
-        `)
-        .eq('parent_id', parentId)
-        .eq('parent_type', parentType)
-        .eq('is_deleted', false)
-        .order('created_at', { ascending: sortOrder === 'oldest' });
-      if (error) throw error;
-      const commentsWithLikes = await Promise.all(
-        data.map(async (comment) => ({
-          ...comment,
-          is_liked: await checkIfUserLiked(comment.id)
-        }))
-      );
-      const commentMap = new Map<string, CommentThread>();
-      commentsWithLikes.forEach(comment => {
-        commentMap.set(comment.id, {
-          comment,
-          replies: []
-        });
-      });
-      const topLevelComments: CommentThread[] = [];
-      commentsWithLikes.forEach(comment => {
-        if (!comment.parent_comment_id) {
-          topLevelComments.push(commentMap.get(comment.id)!);
-        } else if (commentMap.has(comment.parent_comment_id)) {
-          const parent = commentMap.get(comment.parent_comment_id)!;
-          parent.replies.push(commentMap.get(comment.id)!);
-        }
-      });
-      const sortedComments = sortThreads(topLevelComments);
-      setComments(sortedComments);
-    } catch (err) {
-      console.error('Failed to load comments:', err);
-      setError('Failed to load comments. Please try again later.');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [parentId, parentType, currentUser.id, sortOrder]);
+  setIsLoading(true);
+  try {
+    const { data, error } = await supabase
+      .from('comments')
+      .select(`
+        id,
+        user_id,
+        content,
+        created_at,
+        likes_count,
+        is_anonymous,
+        author_name,
+        author_avatar_url,
+        is_deleted,
+        parent_comment_id,
+        replies_count
+      `)
+      .eq('parent_id', parentId)
+      .eq('parent_type', parentType)
+      .eq('is_deleted', false)
+      .order('created_at', { ascending: sortOrder === 'oldest' });
+      
+    if (error) throw error;
+    
+    // Convert avatar URLs to public URLs
+    // ✅ Use your utility for all avatar URLs
+const commentsWithPublicUrls = data.map(comment => ({
+  ...comment,
+  author_avatar_url: comment.author_avatar_url ? getPublicImageUrl(comment.author_avatar_url) : null,
+}));
+    
+    const commentsWithLikes = await Promise.all(
+      commentsWithPublicUrls.map(async (comment) => ({
+        ...comment,
+        is_liked: await checkIfUserLiked(comment.id)
+      }))
+    );
+    
+    // Rest of your code...
+  } catch (err) {
+    console.error('Failed to load comments:', err);
+    setError('Failed to load comments. Please try again later.');
+  } finally {
+    setIsLoading(false);
+  }
+}, [parentId, parentType, currentUser.id, sortOrder]);
 
   useEffect(() => {
     loadPostLikeState();
@@ -683,6 +680,7 @@ export function CommentsSection({
     });
   };
 
+  
   const handleSubmit = async (replyToCommentId?: string) => {
     const content = replyToCommentId
       ? (replyTexts[replyToCommentId] || '').trim()
@@ -703,12 +701,15 @@ if (profileError) {
   console.warn('Failed to fetch profile:', profileError);
   // handle fallback
 }
-      const authorName = currentUser.isAnonymous
-        ? 'Anonymous'
-        : (profileData?.full_name || currentUser.fullName || 'Someone');
-      const authorAvatar = currentUser.isAnonymous
-        ? null
-        : (profileData?.avatar_url || null);
+      // Get author display info
+const authorName = currentUser.isAnonymous
+  ? 'Anonymous'
+  : (profileData?.full_name || currentUser.fullName || 'Someone');
+
+let authorAvatar = null;
+if (!currentUser.isAnonymous && profileData?.avatar_url) {
+  authorAvatar = getPublicImageUrl(profileData.avatar_url); // ✅ Use utility
+}
       const newCommentObj: Comment = {
         id: commentId,
         user_id: currentUser.id,
@@ -772,41 +773,7 @@ if (profileError) {
   };
 
   const getAvatar = (comment: Comment) => {
-    if (comment.is_anonymous) {
-      return (
-        <div style={{
-          width: '32px',
-          height: '32px',
-          borderRadius: '9999px',
-          backgroundColor: '#FEF3C7',
-          border: '1px solid #FDE68A',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center'
-        }}>
-          <span style={{ color: '#92400E', fontWeight: 500, fontSize: '0.875rem' }}>A</span>
-        </div>
-      );
-    }
-    if (comment.author_avatar_url) {
-      return (
-        <div style={{
-          width: '32px',
-          height: '32px',
-          borderRadius: '9999px',
-          overflow: 'hidden',
-          border: '1px solid #FDE68A'
-        }}>
-          <Image
-            src={comment.author_avatar_url}
-            alt={comment.author_name}
-            width={32}
-            height={32}
-            style={{ objectFit: 'cover', width: '100%', height: '100%' }}
-          />
-        </div>
-      );
-    }
+  if (comment.is_anonymous) {
     return (
       <div style={{
         width: '32px',
@@ -818,13 +785,70 @@ if (profileError) {
         alignItems: 'center',
         justifyContent: 'center'
       }}>
-        <span style={{ color: '#92400E', fontWeight: 500, fontSize: '0.875rem' }}>
-          {comment.author_name.charAt(0).toUpperCase()}
-        </span>
+        <span style={{ color: '#92400E', fontWeight: 500, fontSize: '0.875rem' }}>A</span>
       </div>
     );
-  };
+  }
 
+  // Safely handle avatar URLs - ensure they're public URLs
+  let avatarUrl = comment.author_avatar_url;
+  if (avatarUrl && !avatarUrl.startsWith('http')) {
+    // This is likely a storage path that needs conversion
+    try {
+      // Check if it's already a bucket path (starts with bucket name)
+      if (!avatarUrl.startsWith('avatars/')) {
+        avatarUrl = `avatars/${avatarUrl}`;
+      }
+      
+      const { data: publicUrlData } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(avatarUrl.split('avatars/')[1]);
+      avatarUrl = publicUrlData?.publicUrl || null;
+    } catch (error) {
+      console.error('Error converting avatar URL:', error);
+      avatarUrl = null;
+    }
+  }
+
+  if (avatarUrl) {
+    return (
+      <div style={{
+        width: '32px',
+        height: '32px',
+        borderRadius: '9999px',
+        overflow: 'hidden',
+        border: '1px solid #FDE68A'
+      }}>
+        <Image
+          src={avatarUrl}
+          alt={comment.author_name}
+          width={32}
+          height={32}
+          style={{ objectFit: 'cover', width: '100%', height: '100%' }}
+          unoptimized
+        />
+      </div>
+    );
+  }
+  
+  // Fallback avatar
+  return (
+    <div style={{
+      width: '32px',
+      height: '32px',
+      borderRadius: '9999px',
+      backgroundColor: '#FEF3C7',
+      border: '1px solid #FDE68A',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    }}>
+      <span style={{ color: '#92400E', fontWeight: 500, fontSize: '0.875rem' }}>
+        {comment.author_name.charAt(0).toUpperCase()}
+      </span>
+    </div>
+  );
+};
   const insertEmoji = (emojiData: { emoji: string }, target: 'top' | string) => {
     if (target === 'top') {
       setNewTopLevelComment(prev => prev + emojiData.emoji);

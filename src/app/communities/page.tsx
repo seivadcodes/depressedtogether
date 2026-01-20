@@ -86,8 +86,8 @@ export default function CommunitiesPage() {
   ...community,
   // Use the path from DB, and proxy it — don't override it!
   cover_photo_url: community.cover_photo_url
-    ? `/api/media/${community.cover_photo_url}`
-    : null,
+  ? `/api/media/communities/${community.cover_photo_url}`
+  : null,
 }));
 
           setCommunities(communitiesWithPhotos);

@@ -1319,7 +1319,7 @@ avatar_url
       const { data } = await supabase.storage
         .from('message-files')
         .getPublicUrl(fileName);
-      const publicUrl = data.publicUrl;
+     const publicUrl = `/api/media/message-files/${fileName}`;
 
       // Optimistic message
       const tempId = `temp-${Date.now()}`;

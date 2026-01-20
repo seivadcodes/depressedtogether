@@ -550,10 +550,7 @@ export default function CommunityChatPage() {
                 .from('community-files')
                 .upload(fileName, file);
             if (uploadError) throw uploadError;
-            const { data } = await supabase.storage
-                .from('community-files')
-                .getPublicUrl(fileName);
-            const publicUrl = data.publicUrl;
+            const internalUrl = `/api/media/community-files/${fileName}`;
 
             const tempId = `temp-${user.id}-${Date.now()}`;
             const now = new Date().toISOString();
@@ -563,7 +560,7 @@ export default function CommunityChatPage() {
                 sender_id: user.id,
                 created_at: now,
                 sender: { full_name: user.user_metadata?.full_name || 'You', avatar_url: user.user_metadata?.avatar_url || null },
-                file_url: publicUrl,
+                file_url: internalUrl,
                 file_type: file.type,
                 reactions: {},
                 reply_to: null,
@@ -579,7 +576,7 @@ export default function CommunityChatPage() {
                     community_id: communityId,
                     sender_id: user.id,
                     content: file.name,
-                    file_url: publicUrl,
+                     file_url: internalUrl,
                     file_type: file.type,
                 })
                 .select(`*, sender:sender_id (full_name, avatar_url)`)

@@ -243,7 +243,7 @@ if (fileToUpload) {
     if (uploadError) throw uploadError;
 
     // ✅ Save the path to the database
-    savedBannerPath = fileName;
+   savedBannerPath = `communities/${fileName}`; // e.g., "communities/loss-of-parent/banner.jpg"
   } catch (uploadErr: unknown) {
     console.error('Banner upload failed:', uploadErr);
     setUploadError('Banner upload failed, but your community was created. You can add a banner later.');
@@ -533,10 +533,7 @@ if (updateError) {
                 onBlur={(e) => (e.target.style.borderColor = '#d1d5db')}
                 maxLength={60}
               />
-              <p style={baseStyles.textXs}>
-                This will be used in the community URL: healingshoulder.com/communities/
-                {generateSlug(name) || 'your-community'}
-              </p>
+              
             </div>
 
             <div style={baseStyles.spaceY2}>

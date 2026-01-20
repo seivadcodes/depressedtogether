@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import Image from 'next/image';
-import Link from 'next/link'; // 👈 Added import for Link
+import Link from 'next/link';
 import { CommentsSection } from './CommentsSection';
 
 // ─── TYPES ────────────────────────────────────────
@@ -148,10 +148,15 @@ export function PostCard({
   const supabase = useMemo(() => createClient(), []);
   const { user: currentUser } = useAuth();
 
-  // Only keep delete loading state
-  const [deleteLoading, setDeleteLoading] = useState(false);
+  // Resolve current user's avatar to public URL
+  const resolvedAvatarUrl = useMemo(() => {
+    const path = currentUser?.user_metadata?.avatar_url;
+    if (!path) return undefined; 
+    const { data } = supabase.storage.from('avatars').getPublicUrl(path);
+    return data.publicUrl;
+  }, [currentUser?.user_metadata?.avatar_url, supabase]);
 
-  // Media gallery
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
 
   const mediaUrls = useMemo(() => {
@@ -241,7 +246,6 @@ export function PostCard({
               )}
             </div>
             <div>
-              {/* 👇 Wrapped the author name in a Link */}
               {post.isAnonymous || !post.user?.id ? (
                 <h3 style={{ fontWeight: 600, color: baseColors.text.primary, fontSize: '0.95rem' }}>
                   {displayAuthor.name}
@@ -251,7 +255,7 @@ export function PostCard({
                   <h3
                     style={{
                       fontWeight: 600,
-                      color: baseColors.primary, // Optional: Change color to indicate link
+                      color: baseColors.primary,
                       fontSize: '0.95rem',
                       cursor: 'pointer',
                       textDecoration: 'none',
@@ -459,7 +463,7 @@ export function PostCard({
         </div>
       )}
 
-      {/* 💬 COMMENTS — kept as requested */}
+      {/* 💬 COMMENTS */}
       <div id={`comments-${post.id}`} style={{ marginTop: spacing.lg }}>
         <CommentsSection
           parentId={post.id}
@@ -470,7 +474,7 @@ export function PostCard({
               currentUser?.user_metadata?.full_name ||
               currentUser?.email?.split('@')[0] ||
               'Anonymous',
-            avatarUrl: currentUser?.user_metadata?.avatar_url || null,
+            avatarUrl: resolvedAvatarUrl,
             isAnonymous: false,
           }}
         />

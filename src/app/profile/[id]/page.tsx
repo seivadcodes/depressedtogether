@@ -89,18 +89,27 @@ export default function PublicProfile() {
         setLoading(true);
         setError(null);
 
-        const { data: profileData, error: profileError } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', id)
-          .single();
+        // Inside fetchProfileAndPosts()
+const { data: profileData, error: profileError } = await supabase
+  .from('profiles')
+  .select('*')
+  .eq('id', id)
+  .single();
 
-        if (profileError || !profileData) {
-          setError('Profile not found');
-          return;
-        }
+if (profileError || !profileData) {
+  setError('Profile not found');
+  return;
+}
 
-        setProfile(profileData);
+// ✅ Convert Supabase storage path to your API proxy URL
+const avatarProxyUrl = profileData.avatar_url
+  ? `/api/media/${profileData.avatar_url}`
+  : null;
+
+setProfile({
+  ...profileData,
+  avatar_url: avatarProxyUrl, // now it's a valid /api/... path
+});
 
         const { data: postData, error: postError } = await supabase
           .from('posts')
@@ -121,27 +130,32 @@ export default function PublicProfile() {
           console.error('Failed to load posts:', postError);
         }
 
-        const mappedPosts = (postData || []).map((p) => ({
-          id: p.id,
-          userId: p.user_id,
-          text: p.text,
-          mediaUrl: p.media_url || null,
-          mediaUrls: p.media_urls || undefined,
-          griefTypes: p.grief_types as GriefType[],
-          createdAt: new Date(p.created_at),
-          likes: p.likes_count || 0,
-          isLiked: false,
-          commentsCount: p.comments_count || 0,
-          isAnonymous: false,
-          user: p.profiles
-            ? {
-                id: p.profiles.id,
-                fullName: p.profiles.full_name,
-                avatarUrl: p.profiles.avatar_url,
-                isAnonymous: p.profiles.is_anonymous ?? false,
-              }
-            : undefined,
-        }));
+        const mappedPosts = (postData || []).map((p) => {
+  const userAvatar = p.profiles?.avatar_url
+  ? supabase.storage.from('avatars').getPublicUrl(p.profiles.avatar_url).data.publicUrl
+  : null;
+  return {
+    id: p.id,
+    userId: p.user_id,
+    text: p.text,
+    mediaUrl: p.media_url || null,
+    mediaUrls: p.media_urls || undefined,
+    griefTypes: p.grief_types as GriefType[],
+    createdAt: new Date(p.created_at),
+    likes: p.likes_count || 0,
+    isLiked: false,
+    commentsCount: p.comments_count || 0,
+    isAnonymous: false,
+    user: p.profiles
+      ? {
+          id: p.profiles.id,
+          fullName: p.profiles.full_name,
+          avatarUrl: userAvatar, // ✅ now a valid URL
+          isAnonymous: p.profiles.is_anonymous ?? false,
+        }
+      : undefined,
+  };
+});
 
         setPosts(mappedPosts);
       } catch (err) {
@@ -225,18 +239,18 @@ export default function PublicProfile() {
           }}
         >
           {profile.avatar_url ? (
-            <div style={{ width: '72px', height: '72px', borderRadius: '50%', overflow: 'hidden' }}>
-              <Image
-                src={profile.avatar_url}
-                alt={name}
-                width={72}
-                height={72}
-                style={{ objectFit: 'cover' }}
-              />
-            </div>
-          ) : (
-            name.charAt(0).toUpperCase()
-          )}
+  <div style={{ width: '72px', height: '72px', borderRadius: '50%', overflow: 'hidden' }}>
+    <Image
+      src={profile.avatar_url} // e.g. "/api/media/avatars/.../file.jpg"
+      alt={name}
+      width={72}
+      height={72}
+      style={{ objectFit: 'cover' }}
+    />
+  </div>
+) : (
+  name.charAt(0).toUpperCase()
+)}
         </div>
 
         <h1 style={{ margin: '0 0 0.5rem', fontSize: '1.25rem', fontWeight: '600', color: '#1e293b' }}>

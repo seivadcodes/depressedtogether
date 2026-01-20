@@ -383,18 +383,25 @@ if (!coverPhotoUrl) {
 
       // 6. Format members for UI
       const formattedMembers = membersData.map((member: CommunityMemberWithProfile) => {
-        const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
-        const isAnonymous = profile?.is_anonymous || false;
-        return {
-          user_id: member.user_id,
-          username: isAnonymous ? 'Anonymous' : profile?.full_name || 'Anonymous',
-          avatar_url: isAnonymous ? null : profile?.avatar_url || null,
-          last_online: profile?.last_online || null,
-          is_online: isUserOnline(profile?.last_online || null),
-          role: member.role,
-          joined_at: member.joined_at,
-        };
-      });
+  const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
+  const isAnonymous = profile?.is_anonymous || false;
+  let avatarUrl = null;
+
+  if (!isAnonymous && profile?.avatar_url) {
+    // ✅ Construct a valid URL using your API proxy route
+    avatarUrl = `/api/media/${profile.avatar_url}`; // e.g., /api/media/avatars/789c18dc485...jpg
+  }
+
+  return {
+    user_id: member.user_id,
+    username: isAnonymous ? 'Anonymous' : profile?.full_name || 'Anonymous',
+    avatar_url: avatarUrl, // ✅ Now a valid, proxied URL
+    last_online: profile?.last_online || null,
+    is_online: isUserOnline(profile?.last_online || null),
+    role: member.role,
+    joined_at: member.joined_at,
+  };
+});
       setMembers(formattedMembers);
 
       // 7. Check membership status
@@ -1075,20 +1082,21 @@ useEffect(() => {
             }}
           >
             <Image
-              src={
-                community.cover_photo_url ||
-                `https://via.placeholder.com/1200x300/fcd34d-f97316?text=${encodeURIComponent(community.name)}`
-              }
-              alt={community.name}
-              fill
-              sizes="100vw"
-              style={{ objectFit: 'cover' }}
-              onError={(e) => {
-                (e.target as HTMLImageElement).src = `https://via.placeholder.com/1200x300/fcd34d-f97316?text=${encodeURIComponent(
-                  community.name
-                )}`;
-              }}
-            />
+  src={
+    community.cover_photo_url
+      ? `/api/media/communities/${community.cover_photo_url}`
+      : `https://via.placeholder.com/1200x300/fcd34d-f97316?text=${encodeURIComponent(community.name)}`
+  }
+  alt={community.name}
+  fill
+  sizes="100vw"
+  style={{ objectFit: 'cover' }}
+  onError={(e) => {
+    (e.target as HTMLImageElement).src = `https://via.placeholder.com/1200x300/fcd34d-f97316?text=${encodeURIComponent(
+      community.name
+    )}`;
+  }}
+/>
             <div
               style={{
                 position: 'absolute',
@@ -1227,32 +1235,28 @@ useEffect(() => {
           }}
         >
           {community.cover_photo_url ? (
-            <Image
-  src={
-    community.cover_photo_url
-      ? `/api/media/${community.cover_photo_url}`
-      : `https://via.placeholder.com/1200x300/fcd34d-f97316?text=${encodeURIComponent(community.name)}`
-  }
-  alt={community.name}
-  fill
-  sizes="100vw"
-  style={{ objectFit: 'cover' }}
-/>
-          ) : (
-            <div
-              style={{
-                width: '100%',
-                height: '100%',
-                background: gradient,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'white',
-              }}
-            >
-              <Users size={32} />
-            </div>
-          )}
+  <Image
+    src={`/api/media/communities/${community.cover_photo_url}`}
+    alt={community.name}
+    fill
+    sizes="100vw"
+    style={{ objectFit: 'cover' }}
+  />
+) : (
+  <div
+    style={{
+      width: '100%',
+      height: '100%',
+      background: gradient,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      color: 'white',
+    }}
+  >
+    <Users size={32} />
+  </div>
+)}
         </div>
       </Link>
 
