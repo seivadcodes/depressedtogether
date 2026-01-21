@@ -3,9 +3,9 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { createSession } from '@/lib/matching';
 
 // Mock live activity feed
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const mockLiveActivities = [
   { id: 1, type: 'chat', message: 'Live Now: 3 people in “Grief Support Chat” — join anonymously.', action: 'Join' },
   { id: 2, type: 'call', message: 'Someone just asked for a group call about “Coping with Holidays” — you can join.', action: 'Join Call' },
@@ -14,6 +14,13 @@ const mockLiveActivities = [
   { id: 5, type: 'game', message: 'Game Live: “Memory Garden” — 5 players building a digital memorial together. Join?', action: 'Play' },
   { id: 6, type: 'post', message: 'Someone posted in “Loss of a Parent”: “I miss his laugh today.” — reply with a heart or share your story.', action: 'Respond' },
 ];
+
+const createSession = async () => {
+  await new Promise(resolve => setTimeout(resolve, 800));
+  return {
+    id: Math.random().toString(36).substring(2, 10),
+  };
+};
 
 export default function HomePage() {
   const router = useRouter();
@@ -60,6 +67,8 @@ export default function HomePage() {
   const handleFindTribe = () => {
     router.push('/communities');
   };
+
+  
 
   return (
     <div
