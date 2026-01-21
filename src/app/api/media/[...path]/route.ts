@@ -25,10 +25,10 @@ function isAllowedBucket(bucket: string): bucket is AllowedBucket {
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Record<string, string | string[]> } // Fixed type annotation
+  { params }: { params: Promise<{ path: string[] }> } // Fixed: params is a Promise
 ) {
-  // Get and validate path parts
-  const pathParts = params.path;
+  // Await the params Promise
+  const { path: pathParts } = await params;
   
   if (!Array.isArray(pathParts) || pathParts.length < 2) {
     return NextResponse.json({ error: 'Invalid path: missing bucket or file' }, { status: 400 });
