@@ -151,15 +151,12 @@ export default function CallOverlay() {
             border: '2px solid #4f46e5'
           }}>
             {incomingCall.callerAvatar ? (
-              <img 
-                src={incomingCall.callerAvatar} 
-                alt={incomingCall.callerName} 
-                style={{ 
-                  width: '100%', 
-                  height: '100%', 
-                  objectFit: 'cover' 
-                }} 
-              />
+  <img 
+    src={`/api/media/avatars/${incomingCall.callerAvatar}`} 
+    alt={incomingCall.callerName} 
+    style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+    onError={(e) => (e.currentTarget.style.display = 'none')}
+  />
             ) : (
               <span style={{ 
                 fontSize: '32px', 
@@ -251,15 +248,12 @@ export default function CallOverlay() {
               border: '3px solid #4f46e5'
             }}>
               {participantAvatar ? (
-                <img 
-                  src={participantAvatar} 
-                  alt={participantName || 'User'} 
-                  style={{ 
-                    width: '100%', 
-                    height: '100%', 
-                    objectFit: 'cover' 
-                  }} 
-                />
+  <img 
+    src={`/api/media/avatars/${participantAvatar}`} 
+    alt={participantName || 'User'} 
+    style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+    onError={(e) => (e.currentTarget.style.display = 'none')}
+  />
               ) : (
                 <span style={{ 
                   fontSize: '48px', 
@@ -294,15 +288,12 @@ export default function CallOverlay() {
               border: '3px solid #4f46e5'
             }}>
               {participantAvatar ? (
-                <img 
-                  src={participantAvatar} 
-                  alt={participantName || 'User'} 
-                  style={{ 
-                    width: '100%', 
-                    height: '100%', 
-                    objectFit: 'cover' 
-                  }} 
-                />
+  <img 
+    src={`/api/media/avatars/${participantAvatar}`} 
+    alt={participantName || 'User'} 
+    style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+    onError={(e) => (e.currentTarget.style.display = 'none')}
+  />
               ) : (
                 <span style={{ 
                   fontSize: '48px', 
@@ -341,15 +332,12 @@ export default function CallOverlay() {
               boxShadow: '0 0 20px rgba(16, 185, 129, 0.5)'
             }}>
               {participantAvatar ? (
-                <img 
-                  src={participantAvatar} 
-                  alt={participantName || 'User'} 
-                  style={{ 
-                    width: '100%', 
-                    height: '100%', 
-                    objectFit: 'cover' 
-                  }} 
-                />
+  <img 
+    src={`/api/media/avatars/${participantAvatar}`} 
+    alt={participantName || 'User'} 
+    style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+    onError={(e) => (e.currentTarget.style.display = 'none')}
+  />
               ) : (
                 <span style={{ 
                   fontSize: '64px', 

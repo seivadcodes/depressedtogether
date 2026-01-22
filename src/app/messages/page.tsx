@@ -1049,7 +1049,7 @@ avatar_url
         timestamp: now
       });
 
-      toast.success('Message sent!');
+      
     } catch (err) {
       console.error('Send failed:', err);
       // Queue failed message

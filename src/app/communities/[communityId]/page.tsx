@@ -11,7 +11,6 @@ import { PostCard } from '@/components/PostCard';
 import { PostComposer } from '@/components/PostComposer';
 import {
   Users,
-  Heart,
   MessageCircle,
   LogIn,
   LogOut,
@@ -21,18 +20,20 @@ import {
   X,
   Loader2,
   Upload,
+  Brain,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
-// --- Types ---
+
+// --- Types (unchanged) ---
 interface Community {
   id: string;
   name: string;
   description: string;
   member_count: number;
   online_count: number;
-  grief_type: string;
+  grief_type: string; // still used internally, but UI won't show it
   created_at: string;
   cover_photo_url?: string | null;
 }
@@ -78,7 +79,6 @@ interface Profile {
   last_online?: string | null;
   is_anonymous?: boolean;
 }
-
 interface CommunityMemberWithProfile {
   role: 'member' | 'admin' | 'moderator';
   joined_at: string;
@@ -97,32 +97,24 @@ interface CommunityPost {
   user_id: string;
 }
 
-// --- Shared Styles (Inline) ---
+// --- Shared Styles (Updated for Depression Theme) ---
 const baseColors = {
-  primary: '#f59e0b',
+  primary: '#3b82f6', // blue-500
   secondary: '#1e293b',
-  accent: '#16a34a',
-  background: '#fffbeb',
+  accent: '#10b981', // emerald-500 (calm, hopeful)
+  background: '#f0f7ff',
   surface: '#ffffff',
   border: '#e2e8f0',
   text: { primary: '#1e293b', secondary: '#64748b', muted: '#94a3b8' },
-  status: { online: '#16a34a', offline: '#cbd5e1' },
+  status: { online: '#10b981', offline: '#cbd5e1' },
 };
+
 const spacing = { xs: '0.25rem', sm: '0.5rem', md: '0.75rem', lg: '1rem', xl: '1.25rem', '2xl': '1.5rem' };
 const borderRadius = { sm: '0.25rem', md: '0.5rem', lg: '0.75rem', xl: '1rem', full: '9999px' };
-const griefGradients: Record<string, string> = {
-  parent: 'linear-gradient(135deg, #fcd34d, #f97316)',
-  child: 'linear-gradient(135deg, #d8b4fe, #8b5cf6)',
-  spouse: 'linear-gradient(135deg, #fda4af, #ec4899)',
-  sibling: 'linear-gradient(135deg, #5eead4, #06b6d4)',
-  friend: 'linear-gradient(135deg, #93c5fd, #6366f1)',
-  pet: 'linear-gradient(135deg, #fef08a, #f59e0b)',
-  miscarriage: 'linear-gradient(135deg, #fbcfe8, #e11d48)',
-  caregiver: 'linear-gradient(135deg, #e5e7eb, #f59e0b)',
-  suicide: 'linear-gradient(135deg, #ddd6fe, #a78bfa)',
-  other: 'linear-gradient(135deg, #e5e7eb, #9ca3af)',
-};
-const defaultGradient = griefGradients.parent;
+
+// New: Depression-themed fallback gradient (no grief types shown)
+const defaultGradient = 'linear-gradient(135deg, #dbeafe, #bfdbfe)';
+
 const buttonStyle = (bg: string, color = 'white') => ({
   background: bg,
   color,
@@ -136,6 +128,7 @@ const buttonStyle = (bg: string, color = 'white') => ({
   fontWeight: 600,
   transition: 'background 0.2s',
 });
+
 const outlineButtonStyle = {
   background: 'transparent',
   color: baseColors.text.primary,
@@ -147,6 +140,7 @@ const outlineButtonStyle = {
   alignItems: 'center',
   gap: spacing.sm,
 };
+
 const cardStyle: React.CSSProperties = {
   background: baseColors.surface,
   borderRadius: borderRadius.lg,
@@ -155,14 +149,16 @@ const cardStyle: React.CSSProperties = {
   boxShadow: '0 2px 6px rgba(0,0,0,0.04)',
   marginBottom: spacing.xs,
 };
+
 const pageContainer: React.CSSProperties = {
   minHeight: '100vh',
-  background: `linear-gradient(to bottom, ${baseColors.background}, #f5f5f1, #f0f0ee)`,
+  background: `linear-gradient(to bottom, ${baseColors.background}, #e6f0ff, #dde9ff)`,
   paddingTop: '5rem',
   paddingBottom: spacing.xl,
   paddingLeft: spacing.lg,
   paddingRight: spacing.lg,
 };
+
 const centerStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column' as const,
@@ -172,7 +168,6 @@ const centerStyle: React.CSSProperties = {
   padding: spacing.lg,
 };
 
-// --- Skeleton Loader Style ---
 const skeletonStyle: React.CSSProperties = {
   background: '#f1f5f9',
   borderRadius: borderRadius.lg,
@@ -183,12 +178,13 @@ const skeletonStyle: React.CSSProperties = {
   position: 'relative',
   overflow: 'hidden',
 };
+
 const pulseAnimation = `
-  @keyframes pulse {
-    0% { opacity: 1; }
-    50% { opacity: 0.6; }
-    100% { opacity: 1; }
-  }
+@keyframes pulse {
+0% { opacity: 1; }
+50% { opacity: 0.6; }
+100% { opacity: 1; }
+}
 `;
 
 export default function CommunityDetailPage() {
@@ -225,7 +221,7 @@ export default function CommunityDetailPage() {
   const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
   const [isKebabOpen, setIsKebabOpen] = useState(false);
   const kebabMenuRef = useRef<HTMLDivElement>(null);
-  const [memberStatusResolved, setMemberStatusResolved] = useState(false); // 👈 NEW
+  const [memberStatusResolved, setMemberStatusResolved] = useState(false);
   const [showFullDescription, setShowFullDescription] = useState(false);
   const [newPostsCount, setNewPostsCount] = useState<number>(0);
   const [newMessagesCount, setNewMessagesCount] = useState<number>(0);
@@ -254,7 +250,7 @@ export default function CommunityDetailPage() {
       const newPost = await createPostWithMedia(text, mediaFiles, user.id);
       setPosts((prev) => [newPost, ...prev]);
       setIsModalOpen(false);
-      toast.success('Post shared with the community!');
+      toast.success('Shared with the community!');
     } catch (err) {
       console.error('Failed to create post via modal:', err);
       toast.error(err instanceof Error ? err.message : 'Failed to share post.');
@@ -312,7 +308,7 @@ export default function CommunityDetailPage() {
         setLoading(true);
         setError(null);
 
-        // 1. Fetch community data
+        // 1. Fetch community
         const { data: communityData, error: communityError } = await supabase
           .from('communities')
           .select('*')
@@ -323,47 +319,44 @@ export default function CommunityDetailPage() {
 
         let coverPhotoUrl = communityData.cover_photo_url;
         if (!coverPhotoUrl) {
-          // Fallback: construct a proxy path instead of direct Supabase URL
-          coverPhotoUrl = `communities/${communityId}/banner.jpg`; // ✅ Relative path for proxy
+          coverPhotoUrl = `communities/${communityId}/banner.jpg`;
         }
 
-        // 2. Count total members
+        // 2. Count members
         const { count: memberCount, error: memberCountError } = await supabase
           .from('community_members')
           .select('*', { count: 'exact', head: true })
           .eq('community_id', communityId);
         if (memberCountError) throw new Error(`Failed to count members: ${memberCountError.message}`);
 
-        // 3. Fetch members (needed for UI rendering)
+        // 3. Fetch members
         const { data: membersData, error: membersError } = await supabase
           .from('community_members')
           .select(`
-          role,
-          joined_at,
-          user_id,
-          user:profiles!left (
-            id,
-            full_name,
-            avatar_url,
-            last_online,
-            is_anonymous
-          )
-        `)
+            role,
+            joined_at,
+            user_id,
+            user:profiles!left (
+              id,
+              full_name,
+              avatar_url,
+              last_online,
+              is_anonymous
+            )
+          `)
           .eq('community_id', communityId)
           .order('joined_at', { ascending: true });
         if (membersError) throw membersError;
 
-        // 4. Fetch precomputed online count from optimized view
+        // 4. Online count
         let onlineCount = 0;
         const { data: countData, error: viewError } = await supabase
           .from('community_online_counts')
           .select('online_count')
           .eq('community_id', communityId)
           .single();
-
         if (viewError) {
           console.warn('Falling back to client-side online count:', viewError);
-          // Fallback: compute on client (less efficient)
           onlineCount = membersData.filter((member: CommunityMemberWithProfile) => {
             const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
             return isUserOnline(profile?.last_online || null);
@@ -372,7 +365,6 @@ export default function CommunityDetailPage() {
           onlineCount = countData?.online_count ?? 0;
         }
 
-        // 5. Build community object
         const communityWithPhoto: Community = {
           ...communityData,
           cover_photo_url: coverPhotoUrl,
@@ -381,28 +373,23 @@ export default function CommunityDetailPage() {
         };
         setCommunity(communityWithPhoto);
 
-        // 6. Format members for UI
-const formattedMembers = membersData.map((member: CommunityMemberWithProfile) => {
-  const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
-  const isAnonymous = profile?.is_anonymous || false;
-  
-  // ✅ Correctly assign avatarUrl only if not anonymous and avatar exists
-  const avatarUrl = !isAnonymous && profile?.avatar_url ? profile.avatar_url : null;
+        const formattedMembers = membersData.map((member: CommunityMemberWithProfile) => {
+          const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
+          const isAnonymous = profile?.is_anonymous || false;
+          const avatarUrl = !isAnonymous && profile?.avatar_url ? profile.avatar_url : null;
+          return {
+            user_id: member.user_id,
+            username: isAnonymous ? 'Anonymous' : profile?.full_name || 'Anonymous',
+            avatar_url: avatarUrl,
+            last_online: profile?.last_online || null,
+            is_online: isUserOnline(profile?.last_online || null),
+            role: member.role,
+            joined_at: member.joined_at,
+          };
+        });
+        setMembers(formattedMembers);
 
-  return {
-    user_id: member.user_id,
-    username: isAnonymous ? 'Anonymous' : profile?.full_name || 'Anonymous',
-    avatar_url: avatarUrl, // ✅ Now contains the actual storage path (e.g., "avatars/xyz.jpg") or null
-    last_online: profile?.last_online || null,
-    is_online: isUserOnline(profile?.last_online || null),
-    role: member.role,
-    joined_at: member.joined_at,
-  };
-});
-
-setMembers(formattedMembers);
-
-        // 7. Check membership status
+        // 5. Check membership
         let isCurrentUserMember = false;
         let currentUserRole: typeof userRole = null;
         if (user) {
@@ -421,20 +408,20 @@ setMembers(formattedMembers);
         setUserRole(currentUserRole);
         setMemberStatusResolved(true);
 
-        // 8. Fetch posts
+        // 6. Fetch posts
         const { data: postData, error: postError } = await supabase
           .from('community_posts')
           .select(`
-          id,
-          content,
-          created_at,
-          community_id,
-          media_url,
-          media_urls,
-          likes_count,
-          comments_count,
-          user_id
-        `)
+            id,
+            content,
+            created_at,
+            community_id,
+            media_url,
+            media_urls,
+            likes_count,
+            comments_count,
+            user_id
+          `)
           .eq('community_id', communityId)
           .order('created_at', { ascending: false });
         if (postError) throw postError;
@@ -444,7 +431,6 @@ setMembers(formattedMembers);
           .from('profiles')
           .select('id, full_name, avatar_url, is_anonymous')
           .in('id', userIds);
-
         const profilesMap = new Map();
         profilesData?.forEach((profile: Profile) => {
           profilesMap.set(profile.id, profile);
@@ -470,12 +456,11 @@ setMembers(formattedMembers);
         });
         setPosts(postsWithLikes);
 
-        // === NEW: Track last view timestamps and count new posts/messages ===
+        // 7. Track new activity
         let lastFeedView: string | null = null;
         let lastChatView: string | null = null;
         let newPostsCount = 0;
         let newMessagesCount = 0;
-
         if (user) {
           const { data: viewData } = await supabase
             .from('community_user_views')
@@ -483,12 +468,10 @@ setMembers(formattedMembers);
             .eq('user_id', user.id)
             .eq('community_id', communityId)
             .single();
-
           if (viewData) {
             lastFeedView = viewData.last_feed_view;
             lastChatView = viewData.last_chat_view;
           } else {
-            // Initialize on first visit
             await supabase.from('community_user_views').insert({
               user_id: user.id,
               community_id: communityId,
@@ -498,7 +481,6 @@ setMembers(formattedMembers);
             lastFeedView = lastChatView = new Date().toISOString();
           }
 
-          // Count new posts since last feed view
           const { count: postCount } = await supabase
             .from('community_posts')
             .select('*', { count: 'exact', head: true })
@@ -506,7 +488,6 @@ setMembers(formattedMembers);
             .gt('created_at', lastFeedView || '1970-01-01');
           newPostsCount = postCount || 0;
 
-          // Count new messages since last chat view
           const { count: msgCount } = await supabase
             .from('community_messages')
             .select('*', { count: 'exact', head: true })
@@ -514,7 +495,6 @@ setMembers(formattedMembers);
             .gt('created_at', lastChatView || '1970-01-01');
           newMessagesCount = msgCount || 0;
 
-          // Update last_feed_view now that user has loaded the page
           await supabase
             .from('community_user_views')
             .upsert(
@@ -525,17 +505,9 @@ setMembers(formattedMembers);
               },
               { onConflict: 'user_id,community_id' }
             );
-
           setNewPostsCount(newPostsCount);
           setNewMessagesCount(newMessagesCount);
         }
-
-        // You can store newPostsCount / newMessagesCount in state later if needed
-        // For now, just ensure the DB logic runs without breaking
-        // ==============================================================
-
-
-
       } catch (err) {
         console.error('Error fetching community:', err);
         const message = err instanceof Error ? err.message : 'Failed to load community data';
@@ -544,9 +516,6 @@ setMembers(formattedMembers);
         setLoading(false);
       }
     };
-
-
-
 
     fetchData();
   }, [communityId, user, supabase, isUserOnline]);
@@ -557,15 +526,11 @@ setMembers(formattedMembers);
         const element = postRefs.current[targetPostId];
         if (element) {
           element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-          // Highlight
           element.style.transition = 'background-color 0.8s ease';
-          element.style.backgroundColor = '#fff9db';
+          element.style.backgroundColor = '#dbeafe';
           setTimeout(() => {
             element.style.backgroundColor = '';
           }, 1000);
-
-          // Clean URL
           const url = new URL(window.location.href);
           url.searchParams.delete('postId');
           router.replace(`${url.pathname}${url.search}`, { scroll: false });
@@ -576,26 +541,22 @@ setMembers(formattedMembers);
   }, [targetPostId, posts, router]);
 
   // Refresh members & online count every 30s
-  // Refresh members & online count every 30s
   useEffect(() => {
     if (!communityId) return;
-
     const fetchMembersAndOnlineCount = async () => {
-      // 1. Fetch members
       const { data: membersData, error } = await supabase
         .from('community_members')
         .select(`
-        role,
-        joined_at,
-        user_id,
-        user:profiles!left (id, full_name, avatar_url, last_online, is_anonymous)
-      `)
+          role,
+          joined_at,
+          user_id,
+          user:profiles!left (id, full_name, avatar_url, last_online, is_anonymous)
+        `)
         .eq('community_id', communityId);
       if (error) {
         console.error('Failed to refresh members:', error);
         return;
       }
-
       const formattedMembers = membersData.map((member) => {
         const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
         const isAnonymous = profile?.is_anonymous || false;
@@ -611,17 +572,14 @@ setMembers(formattedMembers);
       });
       setMembers(formattedMembers);
 
-      // 2. Fetch online count from view
       const { data: countData } = await supabase
         .from('community_online_counts')
         .select('online_count')
         .eq('community_id', communityId)
         .single();
-
       const newOnlineCount = countData?.online_count ?? 0;
       setCommunity((prev) => (prev ? { ...prev, online_count: newOnlineCount } : null));
     };
-
     fetchMembersAndOnlineCount();
     const interval = setInterval(fetchMembersAndOnlineCount, 30_000);
     return () => clearInterval(interval);
@@ -740,7 +698,6 @@ setMembers(formattedMembers);
             throw new Error(`File must be less than ${maxSize}MB`);
           }
         }
-
         const uploadPromises = files.map(async (file, idx) => {
           const fileExt = file.name.split('.').pop();
           const fileName = `${communityId}/posts/${postData.id}_${idx}.${fileExt}`;
@@ -748,10 +705,9 @@ setMembers(formattedMembers);
             .from('communities')
             .upload(fileName, file, { upsert: true, contentType: file.type });
           if (uploadError) throw uploadError;
-          return fileName; // ✅ Store only the path!
+          return fileName;
         });
         mediaUrls = await Promise.all(uploadPromises);
-
         const { error: updateError } = await supabase
           .from('community_posts')
           .update({ media_urls: mediaUrls })
@@ -765,7 +721,6 @@ setMembers(formattedMembers);
         .eq('id', userId)
         .single();
       const isAnonymous = userData?.is_anonymous || false;
-
       return {
         id: postData.id,
         content: postData.content,
@@ -799,13 +754,13 @@ setMembers(formattedMembers);
       setPosts((prev) => [newPost, ...prev]);
       setNewPostContent('');
       setNewPostMedia([]);
-      toast.success('Post created successfully!');
+      toast.success('Shared with the community!');
     } catch (err) {
       console.error('Error creating post:', err);
       const errorMessage =
         err instanceof Error ? err.message : typeof err === 'string' ? err : 'Failed to create post';
       setError(errorMessage);
-      toast.error('Failed to create post');
+      toast.error('Failed to share post');
     }
   };
 
@@ -822,7 +777,7 @@ setMembers(formattedMembers);
         .upload(fileName, file, { upsert: true });
       if (uploadError) throw uploadError;
       setCommunity((prev) => (prev ? { ...prev, cover_photo_url: fileName } : null));
-      toast.success('Banner updated successfully!');
+      toast.success('Banner updated!');
       setBannerModalOpen(false);
       setBannerPreview(null);
       setBannerFile(null);
@@ -841,10 +796,14 @@ setMembers(formattedMembers);
   const deletePost = async (postId: string) => {
     setDeletingPostId(postId);
     try {
-      const { error } = await supabase.from('community_posts').delete().eq('id', postId).eq('community_id', communityId);
+      const { error } = await supabase
+        .from('community_posts')
+        .delete()
+        .eq('id', postId)
+        .eq('community_id', communityId);
       if (error) throw error;
       setPosts((prev) => prev.filter((post) => post.id !== postId));
-      toast.success('Post deleted successfully');
+      toast.success('Post deleted');
     } catch (error: unknown) {
       console.error('Post deletion failed:', error);
       if (error instanceof Error) {
@@ -911,7 +870,6 @@ setMembers(formattedMembers);
     return (
       <div style={pageContainer}>
         <div style={centerStyle}>
-          {/* Professional Skeleton Loader */}
           <div style={{ ...skeletonStyle, animation: 'pulse 1.5s ease-in-out infinite' }} />
           <div
             style={{
@@ -933,11 +891,11 @@ setMembers(formattedMembers);
       <div style={pageContainer}>
         {community && (
           <Head>
-            <title>{community.name} • Healing Shoulder</title>
+            <title>{community.name} • Depressed Together</title>
             <meta property="og:title" content={community.name} />
             <meta
               property="og:description"
-              content={community.description?.substring(0, 160) || 'A compassionate space for shared grief and healing.'}
+              content={community.description?.substring(0, 160) || 'A compassionate space for shared support and healing.'}
             />
             <meta property="og:type" content="website" />
             <meta
@@ -1004,7 +962,6 @@ setMembers(formattedMembers);
     );
   }
 
-  // Wait until we know member status before showing anything that depends on it
   if (!memberStatusResolved) {
     return (
       <div style={pageContainer}>
@@ -1015,30 +972,19 @@ setMembers(formattedMembers);
     );
   }
 
-  const gradient = griefGradients[community.grief_type] || defaultGradient;
+  const gradient = defaultGradient;
   const isAdmin = userRole === 'admin';
   const isModerator = userRole === 'moderator' || isAdmin;
   const authUsername = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Anonymous';
 
   const transformPostForCard = (post: Post) => {
-    const validGriefTypes = [
-      'parent', 'child', 'spouse', 'sibling', 'friend',
-      'pet', 'miscarriage', 'caregiver', 'suicide', 'other'
-    ] as const;
-    type GriefType = typeof validGriefTypes[number];
-    const griefType = community?.grief_type;
-    const griefTypes: GriefType[] =
-      griefType && validGriefTypes.some(type => type === griefType)
-        ? [griefType as GriefType]
-        : ['other'];
-
     const mediaUrls = Array.isArray(post.media_urls) && post.media_urls.length > 0
-    ? post.media_urls
-      .filter(Boolean)
-      .map(path => `/api/media/communities/${path}`)
-  : post.media_url
-    ? [`/api/media/communities/${post.media_url}`]
-    : [];
+      ? post.media_urls
+          .filter(Boolean)
+          .map(path => `/api/media/communities/${path}`)
+      : post.media_url
+        ? [`/api/media/communities/${post.media_url}`]
+        : [];
 
     return {
       id: post.id,
@@ -1046,7 +992,7 @@ setMembers(formattedMembers);
       text: post.content,
       mediaUrl: mediaUrls[0] || undefined,
       mediaUrls,
-      griefTypes,
+      griefTypes: ['other'], // unused in depression context
       createdAt: new Date(post.created_at),
       likes: post.likes_count,
       isLiked: post.is_liked,
@@ -1061,7 +1007,6 @@ setMembers(formattedMembers);
     };
   };
 
-  // Media gallery route — adjust as needed
   const mediaGalleryRoute = `/communities/${communityId}/media`;
 
   return (
@@ -1079,23 +1024,23 @@ setMembers(formattedMembers);
               cursor: 'pointer',
             }}
           >
-           <Image
-  src={
-    community.cover_photo_url
-      ? `/api/media/${community.cover_photo_url}`
-      : `https://via.placeholder.com/1200x300/fcd34d-f97316?text=${encodeURIComponent(community.name)}`
-  }
-  alt={community.name}
-  fill
-  sizes="100vw"
-  style={{ objectFit: 'cover' }}
-  unoptimized
-  onError={(e) => {
-    (e.target as HTMLImageElement).src = `https://via.placeholder.com/1200x300/fcd34d-f97316?text=${encodeURIComponent(
-      community.name
-    )}`;
-  }}
-/>
+            <Image
+              src={
+                community.cover_photo_url
+                  ? `/api/media/${community.cover_photo_url}`
+                  : `https://via.placeholder.com/1200x300/dbeafe-bfdbfe?text=${encodeURIComponent(community.name)}`
+              }
+              alt={community.name}
+              fill
+              sizes="100vw"
+              style={{ objectFit: 'cover' }}
+              unoptimized
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = `https://via.placeholder.com/1200x300/dbeafe-bfdbfe?text=${encodeURIComponent(
+                  community.name
+                )}`;
+              }}
+            />
             <div
               style={{
                 position: 'absolute',
@@ -1129,7 +1074,6 @@ setMembers(formattedMembers);
         </Link>
       )}
 
-      {/* Responsive container: column on mobile, row on desktop */}
       <div
         style={{
           maxWidth: '1152px',
@@ -1144,7 +1088,7 @@ setMembers(formattedMembers);
           {/* Community Header */}
           <div style={cardStyle}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.lg, position: 'relative' }}>
-              {/* Three-dot menu (visible only to members) — FIXED VISUALLY */}
+              {/* Three-dot menu */}
               {user && isMember && (
                 <div
                   ref={kebabMenuRef}
@@ -1220,7 +1164,6 @@ setMembers(formattedMembers);
 
               {/* Top Container: Banner Image + Title */}
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: spacing.lg }}>
-                {/* Banner Thumbnail or Fallback Icon — CLICKABLE */}
                 <Link href={mediaGalleryRoute} passHref>
                   <div
                     style={{
@@ -1235,13 +1178,13 @@ setMembers(formattedMembers);
                   >
                     {community.cover_photo_url ? (
                       <Image
-   src={`/api/media/${community.cover_photo_url}`}
-    alt={community.name}
-    fill
-    sizes="100vw"
-    style={{ objectFit: 'cover' }}
-    unoptimized // 👈 MUST BE HERE TOO
-  />
+                        src={`/api/media/${community.cover_photo_url}`}
+                        alt={community.name}
+                        fill
+                        sizes="100vw"
+                        style={{ objectFit: 'cover' }}
+                        unoptimized
+                      />
                     ) : (
                       <div
                         style={{
@@ -1254,13 +1197,12 @@ setMembers(formattedMembers);
                           color: 'white',
                         }}
                       >
-                        <Users size={32} />
+                        <Brain size={32} />
                       </div>
                     )}
                   </div>
                 </Link>
 
-                {/* Community Title & Description */}
                 <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column' }}>
                   <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: baseColors.text.primary, margin: 0 }}>
                     {community.name}
@@ -1271,7 +1213,6 @@ setMembers(formattedMembers);
                         ?.split('\n')
                         .filter(p => p.trim() !== '') || [];
                       const flatText = paragraphs.join(' ').trim();
-
                       if (showFullDescription) {
                         return (
                           <>
@@ -1298,11 +1239,9 @@ setMembers(formattedMembers);
                           </>
                         );
                       }
-
                       const maxChars = isMobile ? 80 : 140;
                       const shouldTruncate = flatText.length > maxChars;
                       const preview = shouldTruncate ? flatText.substring(0, maxChars) + '…' : flatText;
-
                       return (
                         <>
                           <p style={{ margin: '0 0 0.75em 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: isMobile ? 'nowrap' : 'normal' }}>
@@ -1336,7 +1275,6 @@ setMembers(formattedMembers);
 
               {/* Bottom Container: Stats & Action Buttons */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-                {/* Stats Row */}
                 <div
                   style={{
                     display: 'flex',
@@ -1350,7 +1288,7 @@ setMembers(formattedMembers);
                     <Users size={16} style={{ color: baseColors.primary }} /> {community.member_count} members
                   </span>
                   <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                    <Heart size={16} style={{ color: baseColors.accent }} /> {community.online_count} online
+                    <MessageCircle size={16} style={{ color: baseColors.accent }} /> {community.online_count} online
                   </span>
                   <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', position: 'relative' }}>
                     <MessageCircle size={16} style={{ color: '#3b82f6' }} /> {posts.length} posts
@@ -1372,7 +1310,6 @@ setMembers(formattedMembers);
                   </span>
                 </div>
 
-                {/* Chat Button with New Messages Badge */}
                 {isMember && (
                   <Link
                     href={`/communities/${communityId}/chat`}
@@ -1408,7 +1345,6 @@ setMembers(formattedMembers);
                   </Link>
                 )}
 
-                {/* Action Buttons */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
                   {!isMember ? (
                     user ? (
@@ -1446,16 +1382,16 @@ setMembers(formattedMembers);
 
           {/* Create Post */}
           {isMember && (
-            <div ref={composerRef} style={{ marginBottom: spacing.lg /* optional extra control */ }}>
+            <div ref={composerRef} style={{ marginBottom: spacing.lg }}>
               <PostComposer
                 onSubmit={async (text: string, mediaFiles: File[]) => {
                   if (!user) return;
                   const newPost = await createPostWithMedia(text, mediaFiles, user.id);
                   setPosts((prev) => [newPost, ...prev]);
-                  toast.success('Post shared!');
+                  toast.success('Shared with the community!');
                 }}
                 isSubmitting={uploadingMedia}
-                placeholder={`What's on your mind, ${authUsername}? Share your thoughts...`}
+                placeholder={`What’s on your mind, ${authUsername}? You’re not alone...`}
                 avatarUrl={user?.user_metadata?.avatar_url || null}
                 displayName={authUsername}
                 maxFiles={4}
@@ -1473,7 +1409,7 @@ setMembers(formattedMembers);
                 </h3>
                 <p style={{ color: baseColors.text.secondary, marginBottom: spacing.lg }}>
                   {isMember
-                    ? "Be the first to share your thoughts with the community."
+                    ? "Be the first to share what’s on your mind."
                     : "Join this community to see and share posts."}
                 </p>
                 {!isMember && user && (
@@ -1485,11 +1421,9 @@ setMembers(formattedMembers);
               </div>
             ) : (
               posts.map((post) => {
-                // Initialize ref slot for scroll-to-post
                 if (!postRefs.current[post.id]) {
                   postRefs.current[post.id] = null;
                 }
-
                 return (
                   <div
                     key={post.id}
@@ -1511,7 +1445,7 @@ setMembers(formattedMembers);
                 );
               })
             )}
-          </div>s
+          </div>
         </div>
 
         {/* Sidebar */}
@@ -1565,13 +1499,13 @@ setMembers(formattedMembers);
                       >
                         {member.avatar_url ? (
                           <Image
-  src={`/api/media/avatars/${member.avatar_url}`}
-  alt={member.username}
-  width={36}
-  height={36}
-  style={{ borderRadius: borderRadius.full, objectFit: 'cover' }}
-  unoptimized
-/>
+                            src={`/api/media/avatars/${member.avatar_url}`}
+                            alt={member.username}
+                            width={36}
+                            height={36}
+                            style={{ borderRadius: borderRadius.full, objectFit: 'cover' }}
+                            unoptimized
+                          />
                         ) : (
                           member.username[0]?.toUpperCase() || 'U'
                         )}
@@ -1632,9 +1566,9 @@ setMembers(formattedMembers);
                         fontWeight: 600,
                         padding: '0.0625rem 0.375rem',
                         borderRadius: '0.375rem',
-                        background: member.role === 'admin' ? '#fef9c3' : '#ede9fe',
-                        color: member.role === 'admin' ? '#92400e' : '#6d28d9',
-                        border: member.role === 'admin' ? '1px solid #fde68a' : '1px solid #ddd6fe',
+                        background: member.role === 'admin' ? '#dbeafe' : '#ede9fe',
+                        color: member.role === 'admin' ? '#1e40af' : '#6d28d9',
+                        border: member.role === 'admin' ? '1px solid #bfdbfe' : '1px solid #ddd6fe',
                         lineHeight: '1.2',
                         whiteSpace: 'nowrap',
                         alignSelf: 'center',
@@ -1666,7 +1600,7 @@ setMembers(formattedMembers);
             )}
           </div>
 
-          {/* Guidelines */}
+          {/* Community Agreements */}
           <div style={cardStyle}>
             <h2
               style={{
@@ -1688,14 +1622,14 @@ setMembers(formattedMembers);
                   background: baseColors.primary,
                 }}
               ></span>
-              Our Guidelines
+              Our Community Agreements
             </h2>
             <ul style={{ listStyle: 'none', padding: 0, color: baseColors.text.secondary, fontSize: '0.875rem', lineHeight: 1.5 }}>
-              <li>• Share from the heart, listen with compassion</li>
-              <li>• Respect different grief journeys and timelines</li>
-              <li>• No unsolicited advice </li>
-              <li>• Keep personal details confidential</li>
-              <li>• Report harmful content to moderators</li>
+              <li>• Speak from your own experience</li>
+              <li>• Listen without judgment</li>
+              <li>• No advice unless asked</li>
+              <li>• Respect privacy and anonymity</li>
+              <li>• Report harmful content</li>
             </ul>
           </div>
         </div>
@@ -1787,14 +1721,14 @@ setMembers(formattedMembers);
                         width: '3rem',
                         height: '3rem',
                         borderRadius: borderRadius.full,
-                        background: '#fef3c7',
+                        background: '#dbeafe',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         margin: '0 auto 0.5rem',
                       }}
                     >
-                      <ImageIcon size={24} style={{ color: '#d97706' }} />
+                      <ImageIcon size={24} style={{ color: '#3b82f6' }} />
                     </div>
                     <p style={{ color: baseColors.text.secondary }}>
                       Upload a banner image
@@ -1903,12 +1837,12 @@ setMembers(formattedMembers);
             </div>
             <div style={{ padding: spacing.xl, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
               <p style={{ color: baseColors.text.secondary }}>
-                Please provide details about why you are reporting this comment. Reports help us maintain a respectful community.
+                Please describe why you're reporting this comment. Your report helps keep our space safe.
               </p>
               <textarea
                 value={reportReason}
                 onChange={(e) => setReportReason(e.target.value)}
-                placeholder="Describe why you're reporting this comment..."
+                placeholder="Describe your concern..."
                 style={{
                   width: '100%',
                   padding: `${spacing.sm} ${spacing.md}`,
