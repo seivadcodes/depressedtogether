@@ -98,7 +98,7 @@ export default function PublicProfile() {
           .from('posts')
           .select('*')
           .eq('user_id', id)
-          .eq('is_anonymous', false)
+          //.eq('is_anonymous', false)
           .order('created_at', { ascending: false });
 
         if (postError) {
