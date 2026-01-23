@@ -96,8 +96,8 @@ interface CommunityPost {
   likes_count: number;
   comments_count: number;
   user_id: string;
+  is_anonymous: boolean; // ← Add this line
 }
-
 
 // Even though we're not using grief types, PostCard expects this union
 type GriefType =
@@ -424,20 +424,21 @@ export default function CommunityDetailPage() {
 
         // 6. Fetch posts
         const { data: postData, error: postError } = await supabase
-          .from('community_posts')
-          .select(`
-            id,
-            content,
-            created_at,
-            community_id,
-            media_url,
-            media_urls,
-            likes_count,
-            comments_count,
-            user_id
-          `)
-          .eq('community_id', communityId)
-          .order('created_at', { ascending: false });
+  .from('community_posts')
+  .select(`
+    id,
+    content,
+    created_at,
+    community_id,
+    media_url,
+    media_urls,
+    likes_count,
+    comments_count,
+    user_id,
+    is_anonymous
+  `)
+  .eq('community_id', communityId)
+  .order('created_at', { ascending: false });
         if (postError) throw postError;
 
         const userIds = [...new Set(postData.map((post: CommunityPost) => post.user_id))];
@@ -452,22 +453,24 @@ export default function CommunityDetailPage() {
 
         const postsWithLikes = postData.map((post: CommunityPost) => {
           const userProfile = profilesMap.get(post.user_id) || {};
-          const isAnonymous = userProfile.is_anonymous || false;
-          return {
-            id: post.id,
-            content: post.content,
-            media_url: post.media_url,
-            media_urls: post.media_urls,
-            created_at: post.created_at,
-            user_id: post.user_id,
-            username: isAnonymous ? 'Anonymous' : userProfile.full_name || 'Anonymous',
-            avatar_url: isAnonymous ? null : userProfile.avatar_url || null,
-            community_id: post.community_id,
-            likes_count: post.likes_count || 0,
-            comments_count: post.comments_count || 0,
-            is_liked: false,
-             isAnonymous, 
-          };
+          // Use the post's own is_anonymous field!
+const isAnonymous = post.is_anonymous === true; // ← critical fix
+
+return {
+  id: post.id,
+  content: post.content,
+  media_url: post.media_url,
+  media_urls: post.media_urls,
+  created_at: post.created_at,
+  user_id: post.user_id,
+  username: isAnonymous ? 'Anonymous' : userProfile?.full_name || 'Anonymous',
+  avatar_url: isAnonymous ? null : userProfile?.avatar_url || null,
+  community_id: post.community_id,
+  likes_count: post.likes_count || 0,
+  comments_count: post.comments_count || 0,
+  is_liked: false,
+  isAnonymous: isAnonymous, // explicit
+};
         });
         setPosts(postsWithLikes);
 
@@ -1001,12 +1004,12 @@ return {
     isLiked: post.is_liked,
     commentsCount: post.comments_count,
     isAnonymous: post.isAnonymous === true,
-    user: {
-      id: post.user_id,
-      fullName: post.username.toLowerCase().includes('anonymous') ? null : post.username,
-      avatarUrl: post.avatar_url,
-      isAnonymous: post.isAnonymous === true,
-    },
+   user: {
+  id: post.user_id,
+  fullName: post.isAnonymous ? null : post.username,
+  avatarUrl: post.isAnonymous ? null : post.avatar_url,
+  isAnonymous: post.isAnonymous === true,
+},
   };
 };
 
