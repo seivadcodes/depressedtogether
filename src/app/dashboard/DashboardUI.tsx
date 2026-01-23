@@ -1,6 +1,5 @@
 'use client';
-
-import { useState, useEffect, } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Heart,
   MessageCircle,
@@ -12,32 +11,19 @@ import {
   Settings,
   ToggleLeft,
   User,
+  Brain,
+  Sparkles,
 } from 'lucide-react';
 import type {
-  GriefType,
   Post,
   UserProfile,
   UserPreferences,
   DashboardUIProps
 } from './useDashboardLogic';
-
 import Image from 'next/image';
 import Link from 'next/link';
 import { CommentsSection } from '@/components/CommentsSection';
 import { PostCard } from '@/components/PostCard';
-
-const griefTypeLabels: Record<GriefType, string> = {
-  parent: 'Loss of a Parent',
-  child: 'Loss of a Child',
-  spouse: 'Grieving a Partner',
-  sibling: 'Loss of a Sibling',
-  friend: 'Loss of a Friend',
-  pet: 'Pet Loss',
-  miscarriage: 'Pregnancy or Infant Loss',
-  caregiver: 'Caregiver Grief',
-  suicide: 'Suicide Loss',
-  other: 'Other Loss',
-};
 
 // =============== Base Styles ===============
 const baseStyles = {
@@ -80,9 +66,8 @@ const baseStyles = {
 export function DashboardUI({
   profile,
   preferences,
-  showGriefSetup,
+  showMoodSetup,
   showSettings,
-  selectedGriefTypes,
   newPostText,
   mediaFiles,
   mediaPreviews,
@@ -92,8 +77,7 @@ export function DashboardUI({
   isSubmitting,
   error,
   fileInputRef,
-  toggleGriefType,
-  handleSaveGriefTypes,
+  handleSaveMoodSetup,
   handleFileChange,
   removeMedia,
   handlePostSubmit,
@@ -103,7 +87,7 @@ export function DashboardUI({
   updateFullName,
   updateAvatar,
   setShowSettings,
-  setShowGriefSetup,
+  setShowMoodSetup,
   setNewPostText,
   onConnectClick,
   onCommunitiesClick,
@@ -114,9 +98,8 @@ export function DashboardUI({
   isExpanded,
   setIsExpanded,
   saveAbout,
-  otherLossText,
-  setOtherLossText,
-
+  currentMood,
+  setCurrentMood,
 }: DashboardUIProps) {
   if (isLoading) {
     return (
@@ -137,16 +120,14 @@ export function DashboardUI({
     );
   }
 
-  if (showGriefSetup) {
+  if (showMoodSetup) {
     return (
-      <GriefSetupModal
-        selectedGriefTypes={selectedGriefTypes}
-  error={error}
-  toggleGriefType={toggleGriefType}
-  handleSaveGriefTypes={handleSaveGriefTypes}
-  isSubmitting={isSubmitting}
-  otherLossText={otherLossText}
-  setOtherLossText={setOtherLossText}
+      <MoodSetupModal
+        error={error}
+        handleSaveMoodSetup={handleSaveMoodSetup}
+        isSubmitting={isSubmitting}
+        currentMood={currentMood}
+        setCurrentMood={setCurrentMood}
       />
     );
   }
@@ -155,27 +136,25 @@ export function DashboardUI({
     return (
       <SettingsModal
         profile={profile}
-  preferences={preferences}
-  error={error}
-  setShowSettings={setShowSettings}
-  setShowGriefSetup={setShowGriefSetup}
-  toggleAcceptsCalls={toggleAcceptsCalls}
-  toggleAcceptsVideoCalls={toggleAcceptsVideoCalls}
-  toggleAnonymity={toggleAnonymity}
-  updateFullName={updateFullName}
-  updateAvatar={updateAvatar}
-  aboutText={aboutText}
-  setAboutText={setAboutText}
-  isEditingAbout={isEditingAbout}
-  setIsEditingAbout={setIsEditingAbout}
-  isExpanded={isExpanded}
-  setIsExpanded={setIsExpanded}
-  saveAbout={saveAbout}
-  isSubmitting={isSubmitting}
-  selectedGriefTypes={selectedGriefTypes}
-  otherLossText={otherLossText}
-  setOtherLossText={setOtherLossText}
-
+        preferences={preferences}
+        error={error}
+        setShowSettings={setShowSettings}
+        setShowMoodSetup={setShowMoodSetup}
+        toggleAcceptsCalls={toggleAcceptsCalls}
+        toggleAcceptsVideoCalls={toggleAcceptsVideoCalls}
+        toggleAnonymity={toggleAnonymity}
+        updateFullName={updateFullName}
+        updateAvatar={updateAvatar}
+        aboutText={aboutText}
+        setAboutText={setAboutText}
+        isEditingAbout={isEditingAbout}
+        setIsEditingAbout={setIsEditingAbout}
+        isExpanded={isExpanded}
+        setIsExpanded={setIsExpanded}
+        saveAbout={saveAbout}
+        isSubmitting={isSubmitting}
+        currentMood={currentMood}
+        setCurrentMood={setCurrentMood}
       />
     );
   }
@@ -183,7 +162,7 @@ export function DashboardUI({
   return (
     <div style={{
       ...baseStyles.container,
-      background: 'linear-gradient(to bottom, #fffbeb, #fafaf9, #f5f5f4)',
+      background: 'linear-gradient(135deg, #f0f7ff 0%, #dbeafe 50%, #bfdbfe 100%)',
       padding: '1rem',
       paddingBottom: '10rem',
       paddingTop: '3.5rem',
@@ -215,7 +194,8 @@ export function DashboardUI({
         <ProfileContextSection
           profile={profile}
           setShowSettings={setShowSettings}
-          setShowGriefSetup={setShowGriefSetup}
+          setShowMoodSetup={setShowMoodSetup}
+          currentMood={currentMood}
         />
 
         <CommunityPresence onlineCount={onlineCount} />
@@ -233,11 +213,11 @@ export function DashboardUI({
           handlePostSubmit={handlePostSubmit}
         />
 
-        <PostsSection 
-  posts={posts} 
-  currentUser={profile} 
-  currentUserIsAnonymous={preferences.isAnonymous}
-/>
+        <PostsSection
+          posts={posts}
+          currentUser={profile}
+          currentUserIsAnonymous={preferences.isAnonymous}
+        />
 
         <SupportOptions
           onConnectClick={onConnectClick}
@@ -251,26 +231,23 @@ export function DashboardUI({
 }
 
 // =============== Reusable Subcomponents with Inline CSS ===============
-const GriefSetupModal = ({
-  selectedGriefTypes,
+
+const MoodSetupModal = ({
   error,
-  toggleGriefType,
-  handleSaveGriefTypes,
+  handleSaveMoodSetup,
   isSubmitting,
-  otherLossText,
-  setOtherLossText,
+  currentMood,
+  setCurrentMood,
 }: {
-  selectedGriefTypes: GriefType[];
   error: string | null;
-  toggleGriefType: (type: GriefType) => void;
-  handleSaveGriefTypes: () => Promise<void>;
+  handleSaveMoodSetup: () => Promise<void>;
   isSubmitting: boolean;
-  otherLossText: string;
-  setOtherLossText: (text: string) => void;
+  currentMood: string;
+  setCurrentMood: (mood: string) => void;
 }) => (
   <div style={{
     minHeight: '100vh',
-    background: 'linear-gradient(to bottom, #fffbeb, #fafaf9, #f5f5f4)',
+    background: 'linear-gradient(to bottom, #f0f7ff, #dbeafe, #bfdbfe)',
     padding: '1rem',
     display: 'flex',
     flexDirection: 'column' as const,
@@ -281,19 +258,20 @@ const GriefSetupModal = ({
       <h1 style={{
         fontSize: '1.5rem',
         fontWeight: 500,
-        color: '#1c1917',
+        color: '#1e40af',
         textAlign: 'center',
         marginBottom: '0.5rem',
       }}>
-        What losses are you carrying?
+        How are you feeling today?
       </h1>
       <p style={{
-        color: '#44403c',
+        color: '#4b5563',
         textAlign: 'center',
         marginBottom: '1.5rem',
       }}>
-        You can choose more than one. This helps us connect you with the right people.
+        Sharing your current state helps us connect you with the right support.
       </p>
+
       {error && (
         <div style={{
           marginBottom: '1rem',
@@ -306,100 +284,76 @@ const GriefSetupModal = ({
           {error}
         </div>
       )}
+
       <div style={{ display: 'flex', flexDirection: 'column' as const, gap: '0.75rem', marginBottom: '1.5rem' }}>
-        {(Object.keys(griefTypeLabels) as GriefType[]).map((type) => (
+        {['Struggling today', 'Having mixed feelings', 'Managing okay', 'Feeling hopeful'].map((mood) => (
           <button
-            key={type}
-            onClick={() => toggleGriefType(type)}
+            key={mood}
+            onClick={() => setCurrentMood(mood)}
             style={{
               ...baseStyles.buttonBase,
               width: '100%',
               textAlign: 'left' as const,
               padding: '1rem',
-              border: selectedGriefTypes.includes(type)
-                ? '1px solid #f59e0b'
+              border: currentMood === mood
+                ? '1px solid #3b82f6'
                 : '1px solid #e7e5e4',
-              backgroundColor: selectedGriefTypes.includes(type)
-                ? '#fffbeb'
+              backgroundColor: currentMood === mood
+                ? '#dbeafe'
                 : '#fff',
-              color: selectedGriefTypes.includes(type)
-                ? '#92400e'
+              color: currentMood === mood
+                ? '#1e40af'
                 : '#1c1917',
             }}
           >
-            {griefTypeLabels[type]}
-            {selectedGriefTypes.includes(type) && (
-              <span style={{ marginLeft: '0.5rem', color: '#b45309' }}>✓</span>
+            {mood}
+            {currentMood === mood && (
+              <span style={{ marginLeft: '0.5rem', color: '#3b82f6' }}>✓</span>
             )}
           </button>
         ))}
       </div>
 
-      {/* 👇 ADD THIS BLOCK */}
-      {selectedGriefTypes.includes('other') && (
-        <div style={{ marginBottom: '1.5rem' }}>
-          <label style={{
-            display: 'block',
-            fontWeight: 500,
-            color: '#1c1917',
-            marginBottom: '0.5rem',
-            fontSize: '0.875rem'
-          }}>
-            Please describe your loss
-          </label>
-          <input
-            type="text"
-            value={otherLossText}
-            onChange={(e) => setOtherLossText(e.target.value)}
-            placeholder="e.g., Loss of a mentor, home, job, or community..."
-            style={{
-              ...baseStyles.inputBase,
-              width: '100%',
-              fontSize: '0.875rem'
-            }}
-          />
-        </div>
-      )}
-
       <button
-        onClick={handleSaveGriefTypes}
-        disabled={selectedGriefTypes.length === 0 || isSubmitting}
+        onClick={handleSaveMoodSetup}
+        disabled={!currentMood || isSubmitting}
         style={{
           ...baseStyles.buttonBase,
           width: '100%',
           padding: '0.75rem',
-          backgroundColor: selectedGriefTypes.length > 0 && !isSubmitting
-            ? '#f59e0b'
+          backgroundColor: currentMood && !isSubmitting
+            ? '#3b82f6'
             : '#d6d3d1',
-          color: selectedGriefTypes.length > 0 && !isSubmitting
+          color: currentMood && !isSubmitting
             ? '#fff'
             : '#a8a29e',
-          cursor: selectedGriefTypes.length === 0 || isSubmitting ? 'not-allowed' : 'pointer',
+          cursor: !currentMood || isSubmitting ? 'not-allowed' : 'pointer',
         }}
       >
         {isSubmitting ? 'Saving...' : 'Save & Continue'}
       </button>
+
       <p style={{
         textAlign: 'center',
         fontSize: '0.75rem',
         color: '#78716c',
         marginTop: '1rem',
       }}>
-        You can edit this anytime in Settings.
+        You can update this anytime in Settings.
       </p>
     </div>
   </div>
 );
+
 const SettingsModal = ({
   profile,
   preferences,
   error,
   setShowSettings,
-  setShowGriefSetup,
+  setShowMoodSetup,
   toggleAcceptsCalls,
   toggleAcceptsVideoCalls,
   toggleAnonymity,
-
   updateFullName,
   updateAvatar,
   aboutText,
@@ -410,15 +364,14 @@ const SettingsModal = ({
   setIsExpanded,
   saveAbout,
   isSubmitting,
-  selectedGriefTypes,
-  otherLossText,
-  setOtherLossText,
+  currentMood,
+  setCurrentMood,
 }: {
   profile: UserProfile | null;
   preferences: UserPreferences;
   error: string | null;
   setShowSettings: (show: boolean) => void;
-  setShowGriefSetup: (show: boolean) => void;
+  setShowMoodSetup: (show: boolean) => void;
   toggleAcceptsCalls: () => Promise<void>;
   toggleAcceptsVideoCalls: () => Promise<void>;
   toggleAnonymity: () => Promise<void>;
@@ -432,10 +385,8 @@ const SettingsModal = ({
   setIsExpanded: (expanded: boolean) => void;
   saveAbout: () => Promise<void>;
   isSubmitting: boolean;
-    selectedGriefTypes: GriefType[];
-  otherLossText: string;
-  setOtherLossText: (text: string) => void;
-
+  currentMood: string;
+  setCurrentMood: (mood: string) => void;
 }) => {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -443,8 +394,6 @@ const SettingsModal = ({
   const [nameError, setNameError] = useState<string | null>(null);
   const [avatarError, setAvatarError] = useState<string | null>(null);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
-
-
 
   useEffect(() => {
     if (profile?.fullName) {
@@ -466,10 +415,8 @@ const SettingsModal = ({
       setNameError('First name is required');
       return;
     }
-
     setNameError(null);
     setIsSavingName(true);
-
     try {
       await updateFullName(firstName.trim(), lastName.trim());
     } catch (err) {
@@ -485,7 +432,7 @@ const SettingsModal = ({
         minHeight: '100dvh',
         display: 'flex',
         flexDirection: 'column',
-        backgroundColor: '#fafaf9',
+        backgroundColor: '#f0f7ff',
         padding: '1rem',
         paddingBottom: 'calc(60px + env(safe-area-inset-bottom))',
         boxSizing: 'border-box',
@@ -495,7 +442,7 @@ const SettingsModal = ({
     >
       <div style={{ maxWidth: '28rem', width: '100%', margin: '0 auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-          <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#1c1917' }}>Settings</h2>
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#1e40af' }}>Settings</h2>
           <button
             onClick={() => setShowSettings(false)}
             style={{ color: '#78716c', fontSize: '1.25rem', background: 'none', border: 'none', cursor: 'pointer' }}
@@ -521,19 +468,18 @@ const SettingsModal = ({
         <div style={{ ...baseStyles.card, marginBottom: '1.5rem' }}>
           <div style={{ display: 'flex', gap: '0.75rem' }}>
             <div style={{
-  width: '2.5rem',
-  height: '2.5rem',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  backgroundColor: '#fef3c7',
-  borderRadius: '0.5rem'
-}}>
-              <Camera size={20} style={{ color: '#92400e' }} />
+              width: '2.5rem',
+              height: '2.5rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: '#dbeafe',
+              borderRadius: '0.5rem'
+            }}>
+              <Camera size={20} style={{ color: '#3b82f6' }} />
             </div>
             <div style={{ flex: 1 }}>
-              <h3 style={{ fontWeight: 500, color: '#1c1917', marginBottom: '0.75rem' }}>Profile Picture</h3>
-
+              <h3 style={{ fontWeight: 500, color: '#1e40af', marginBottom: '0.75rem' }}>Profile Picture</h3>
               {/* Preview */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
                 <div style={{
@@ -544,36 +490,36 @@ const SettingsModal = ({
                   border: '1px solid #e7e5e4',
                 }}>
                   {profile?.avatarUrl ? (
-  <div style={{ width: '100%', height: '100%', borderRadius: '9999px', overflow: 'hidden' }}>
-    <Image
-  src={profile.avatarUrl}  // ✅ Already a valid /api/media/... URL
-  alt="Your avatar"
-  width={40}
-  height={40}
-  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-  unoptimized
-/>
-  </div>
-) : (
+                    <div style={{ width: '100%', height: '100%', borderRadius: '9999px', overflow: 'hidden' }}>
+                      <Image
+                        src={profile.avatarUrl}
+                        alt="Your avatar"
+                        width={40}
+                        height={40}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        unoptimized
+                      />
+                    </div>
+                  ) : (
                     <div style={{
                       width: '100%',
                       height: '100%',
-                      backgroundColor: '#f5f5f4',
+                      backgroundColor: '#dbeafe',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      color: '#78716c',
+                      color: '#1e40af',
                       fontSize: '1rem',
+                      fontWeight: 'bold'
                     }}>
                       {(profile?.fullName || 'U').charAt(0).toUpperCase()}
                     </div>
                   )}
                 </div>
-                <span style={{ fontSize: '0.875rem', color: '#44403c' }}>
+                <span style={{ fontSize: '0.875rem', color: '#4b5563' }}>
                   {profile?.avatarUrl ? 'Change photo' : 'Add a photo'}
                 </span>
               </div>
-
               {/* Hidden file input */}
               <input
                 type="file"
@@ -597,13 +543,12 @@ const SettingsModal = ({
                 style={{ display: 'none' }}
                 id="avatar-upload"
               />
-
               <button
                 onClick={() => document.getElementById('avatar-upload')?.click()}
                 style={{
                   ...baseStyles.buttonBase,
                   padding: '0.5rem 0.75rem',
-                  backgroundColor: '#f59e0b',
+                  backgroundColor: '#3b82f6',
                   color: '#fff',
                   fontSize: '0.875rem',
                 }}
@@ -611,7 +556,6 @@ const SettingsModal = ({
               >
                 {isUploadingAvatar ? 'Uploading...' : profile?.avatarUrl ? 'Change Photo' : 'Add Photo'}
               </button>
-
               {avatarError && (
                 <div style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.5rem' }}>
                   {avatarError}
@@ -625,19 +569,18 @@ const SettingsModal = ({
         <div style={{ ...baseStyles.card, marginBottom: '1.5rem' }}>
           <div style={{ display: 'flex', gap: '0.75rem' }}>
             <div style={{
-  width: '2.5rem',
-  height: '2.5rem',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  backgroundColor: '#fef3c7',
-  borderRadius: '0.5rem'
-}}>
-              <User size={20} style={{ color: '#92400e' }} />
+              width: '2.5rem',
+              height: '2.5rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: '#dbeafe',
+              borderRadius: '0.5rem'
+            }}>
+              <User size={20} style={{ color: '#3b82f6' }} />
             </div>
             <div style={{ flex: 1 }}>
-              <h3 style={{ fontWeight: 500, color: '#1c1917', marginBottom: '0.75rem' }}>Display Name</h3>
-
+              <h3 style={{ fontWeight: 500, color: '#1e40af', marginBottom: '0.75rem' }}>Display Name</h3>
               <div style={{ display: 'flex', flexDirection: 'column' as const, gap: '1rem' }}>
                 <div>
                   <label style={{ display: 'block', fontWeight: 500, color: '#3f3f46', fontSize: '0.875rem', marginBottom: '0.25rem' }}>
@@ -654,7 +597,6 @@ const SettingsModal = ({
                     placeholder="First name"
                   />
                 </div>
-
                 <div>
                   <label style={{ display: 'block', fontWeight: 500, color: '#3f3f46', fontSize: '0.875rem', marginBottom: '0.25rem' }}>
                     Last Name
@@ -667,25 +609,22 @@ const SettingsModal = ({
                     placeholder="Last name (optional)"
                   />
                 </div>
-
                 {nameError && (
                   <div style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem' }}>{nameError}</div>
                 )}
-
                 <button
                   onClick={handleSaveName}
                   disabled={!firstName.trim() || isSavingName}
                   style={{
                     ...baseStyles.buttonBase,
                     padding: '0.625rem',
-                    backgroundColor: firstName.trim() && !isSavingName ? '#f59e0b' : '#d6d3d1',
+                    backgroundColor: firstName.trim() && !isSavingName ? '#3b82f6' : '#d6d3d1',
                     color: firstName.trim() && !isSavingName ? '#fff' : '#a8a29e',
                     cursor: !firstName.trim() || isSavingName ? 'not-allowed' : 'pointer',
                   }}
                 >
                   {isSavingName ? 'Saving...' : 'Update Display Name'}
                 </button>
-
                 <div style={{ fontSize: '0.75rem', color: '#78716c', marginTop: '0.5rem' }}>
                   This name will be used across the platform. You can change it anytime.
                 </div>
@@ -695,45 +634,21 @@ const SettingsModal = ({
         </div>
 
         <div style={{ marginBottom: '1.5rem' }}>
-          <h3 style={{ fontWeight: 500, color: '#1c1917', marginBottom: '0.5rem' }}>Your Grief Context</h3>
-          <p style={{ fontSize: '0.875rem', color: '#44403c', marginBottom: '0.5rem' }}>
-            {profile?.griefTypes.map((t: GriefType) => griefTypeLabels[t] || 'Unknown loss').join(', ') || 'Not set'}
+          <h3 style={{ fontWeight: 500, color: '#1e40af', marginBottom: '0.5rem' }}>Your Current State</h3>
+          <p style={{ fontSize: '0.875rem', color: '#4b5563', marginBottom: '0.5rem' }}>
+            {currentMood || 'Not set'}
           </p>
           <button
             onClick={() => {
-              setShowGriefSetup(true);
+              setShowMoodSetup(true);
               setShowSettings(false);
             }}
-            style={{ color: '#b45309', fontSize: '0.875rem', background: 'none', border: 'none', cursor: 'pointer' }}
+            style={{ color: '#3b82f6', fontSize: '0.875rem', background: 'none', border: 'none', cursor: 'pointer' }}
           >
-            Edit grief types
+            Update your mood
           </button>
         </div>
-{/* 👇 Add this right after the grief type buttons */}
-{selectedGriefTypes.includes('other') && (
-  <div style={{ marginBottom: '1.5rem' }}>
-    <label style={{
-      display: 'block',
-      fontWeight: 500,
-      color: '#1c1917',
-      marginBottom: '0.5rem',
-      fontSize: '0.875rem'
-    }}>
-      Please describe your loss
-    </label>
-    <input
-      type="text"
-      value={otherLossText}
-      onChange={(e) => setOtherLossText(e.target.value)}
-      placeholder="e.g., Loss of a mentor, home, job, or community..."
-      style={{
-        ...baseStyles.inputBase,
-        width: '100%',
-        fontSize: '0.875rem'
-      }}
-    />
-  </div>
-)}
+
         {/* About Section */}
         <div style={{
           marginBottom: '1.5rem',
@@ -745,12 +660,11 @@ const SettingsModal = ({
           <h3 style={{
             fontSize: '1rem',
             fontWeight: 600,
-            color: '#1c1917',
+            color: '#1e40af',
             marginBottom: '0.5rem'
           }}>
             About You
           </h3>
-
           {isEditingAbout ? (
             <div>
               <textarea
@@ -770,8 +684,8 @@ const SettingsModal = ({
                   boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.05)',
                   transition: 'border-color 0.2s, box-shadow 0.2s',
                 }}
-                placeholder="Share a bit about yourself... What brings you here? Who are you grieving? What helps you feel comforted?"
-                onFocus={(e) => e.target.style.borderColor = '#f59e0b'}
+                placeholder="Share a bit about yourself... What brings you here? What helps you feel better when you're struggling?"
+                onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
                 onBlur={(e) => e.target.style.borderColor = '#d6d3d1'}
               />
               <div style={{
@@ -804,7 +718,7 @@ const SettingsModal = ({
                   disabled={isSubmitting}
                   style={{
                     padding: '0.5rem 1rem',
-                    backgroundColor: isSubmitting ? '#d6d3d1' : '#f59e0b',
+                    backgroundColor: isSubmitting ? '#d6d3d1' : '#3b82f6',
                     color: '#fff',
                     border: 'none',
                     borderRadius: '0.5rem',
@@ -831,7 +745,7 @@ const SettingsModal = ({
                     wordBreak: 'break-word',
                     margin: 0,
                     lineHeight: 1.6,
-                    color: '#1c1917',
+                    color: '#1e40af',
                     overflow: 'hidden',
                     display: '-webkit-box',
                     WebkitBoxOrient: 'vertical',
@@ -906,7 +820,7 @@ const SettingsModal = ({
             onClick={toggleAcceptsCalls}
           >
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 500, color: '#1c1917' }}>
+              <div style={{ fontWeight: 500, color: '#1e40af' }}>
                 {preferences.acceptsCalls ? 'Accepting support calls' : 'Paused for now'}
               </div>
               <div style={{ fontSize: '0.875rem', color: '#78716c', marginTop: '0.25rem' }}>
@@ -922,7 +836,7 @@ const SettingsModal = ({
                 height: '1.25rem',
                 padding: '0.25rem',
                 borderRadius: '9999px',
-                backgroundColor: preferences.acceptsCalls ? '#f59e0b' : '#d6d3d1',
+                backgroundColor: preferences.acceptsCalls ? '#3b82f6' : '#d6d3d1',
                 color: preferences.acceptsCalls ? '#fff' : '#78716c',
               }}
             />
@@ -944,13 +858,13 @@ const SettingsModal = ({
             onClick={toggleAcceptsVideoCalls}
           >
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 500, color: '#1c1917' }}>
+              <div style={{ fontWeight: 500, color: '#1e40af' }}>
                 {preferences.acceptsVideoCalls ? 'Video calls enabled' : 'Video calls disabled'}
               </div>
               <div style={{ fontSize: '0.875rem', color: '#78716c', marginTop: '0.25rem' }}>
                 {preferences.acceptsVideoCalls
                   ? 'You can be invited to video support sessions'
-                  : 'You’ll only be matched for text or audio support'
+                  : 'You\'ll only be matched for text or audio support'
                 }
               </div>
             </div>
@@ -960,7 +874,7 @@ const SettingsModal = ({
                 height: '1.25rem',
                 padding: '0.25rem',
                 borderRadius: '9999px',
-                backgroundColor: preferences.acceptsVideoCalls ? '#f59e0b' : '#d6d3d1',
+                backgroundColor: preferences.acceptsVideoCalls ? '#3b82f6' : '#d6d3d1',
                 color: preferences.acceptsVideoCalls ? '#fff' : '#78716c',
               }}
             />
@@ -968,7 +882,7 @@ const SettingsModal = ({
         </div>
 
         <div style={{ marginBottom: '1.5rem' }}>
-          <h3 style={{ fontWeight: 500, color: '#1c1917', marginBottom: '0.75rem' }}>Privacy Settings</h3>
+          <h3 style={{ fontWeight: 500, color: '#1e40af', marginBottom: '0.75rem' }}>Privacy Settings</h3>
           <div style={{ display: 'flex', flexDirection: 'column' as const, gap: '0.75rem' }}>
             <label style={{
               display: 'flex',
@@ -986,31 +900,30 @@ const SettingsModal = ({
                 style={{
                   height: '1.25rem',
                   width: '1.25rem',
-                  accentColor: '#f59e0b',
+                  accentColor: '#3b82f6',
                   marginTop: '0.25rem',
                 }}
               />
               <div>
-                <div style={{ fontWeight: 500, color: '#1c1917' }}>Post anonymously</div>
+                <div style={{ fontWeight: 500, color: '#1e40af' }}>Post anonymously</div>
                 <div style={{ fontSize: '0.875rem', color: '#78716c', marginTop: '0.25rem' }}>
                   Your name and profile picture will not be shown on your posts
                 </div>
               </div>
             </label>
-
             <div style={{
               padding: '0.75rem',
-              backgroundColor: '#fef3c7',
+              backgroundColor: '#dbeafe',
               borderRadius: '0.5rem',
-              border: '1px solid #fde68a',
+              border: '1px solid #bfdbfe',
             }}>
               <div style={{ display: 'flex', gap: '0.75rem' }}>
                 <div style={{ marginTop: '0.25rem' }}>
-                  <Heart size={20} style={{ color: '#b45309' }} />
+                  <Heart size={20} style={{ color: '#3b82f6' }} />
                 </div>
                 <div>
-                  <div style={{ fontWeight: 500, color: '#92400e' }}>Your safety matters</div>
-                  <div style={{ fontSize: '0.875rem', color: '#92400e', marginTop: '0.25rem' }}>
+                  <div style={{ fontWeight: 500, color: '#1e40af' }}>Your safety matters</div>
+                  <div style={{ fontSize: '0.875rem', color: '#1e40af', marginTop: '0.25rem' }}>
                     We never share your contact information. All connections happen within our secure platform.
                   </div>
                 </div>
@@ -1025,7 +938,7 @@ const SettingsModal = ({
             ...baseStyles.buttonBase,
             width: '100%',
             padding: '0.75rem',
-            backgroundColor: '#1c1917',
+            backgroundColor: '#1e40af',
             color: '#fff',
             marginTop: '1rem',
           }}
@@ -1040,14 +953,17 @@ const SettingsModal = ({
 const ProfileContextSection = ({
   profile,
   setShowSettings,
-  setShowGriefSetup
+  setShowMoodSetup,
+  currentMood
 }: {
   profile: UserProfile | null;
   setShowSettings: (show: boolean) => void;
-  setShowGriefSetup: (show: boolean) => void;
+  setShowMoodSetup: (show: boolean) => void;
+  currentMood: string;
 }) => {
   const displayName = profile?.fullName || (profile?.email ? profile.email.split('@')[0] : 'Friend');
   const firstName = displayName.split(' ')[0];
+
   return (
     <div style={{
       ...baseStyles.card,
@@ -1056,10 +972,10 @@ const ProfileContextSection = ({
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
         <div>
-          <h2 style={{ fontSize: '1.125rem', fontWeight: 500, color: '#1c1917', marginBottom: '0.25rem' }}>
+          <h2 style={{ fontSize: '1.125rem', fontWeight: 500, color: '#1e40af', marginBottom: '0.25rem' }}>
             Welcome back, {firstName}
           </h2>
-          <p style={{ fontSize: '0.875rem', color: '#44403c' }}>Your grief context</p>
+          <p style={{ fontSize: '0.875rem', color: '#4b5563' }}>Your mental health space</p>
         </div>
         <button
           onClick={() => setShowSettings(true)}
@@ -1076,29 +992,19 @@ const ProfileContextSection = ({
           <Settings size={20} />
         </button>
       </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: '0.5rem', marginBottom: '1rem' }}>
-        {profile?.griefTypes?.map((type) => (
-          <span
-  key={type}
-  style={{
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '0.25rem',
-    backgroundColor: '#fef3c7',
-    color: '#92400e',
-    fontSize: '0.875rem',
-    padding: '0.375rem 0.75rem',
-    borderRadius: '9999px',
-    border: '1px solid #fde68a',
-  }}
->
-  <Heart size={12} style={{ color: '#d97706' }} />
-  {type === 'other' && profile?.otherLossDescription
-    ? profile.otherLossDescription
-    : griefTypeLabels[type]
-  }
-</span>
-        ))}
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+        <Brain size={20} style={{ color: '#3b82f6' }} />
+        <span style={{
+          backgroundColor: '#dbeafe',
+          color: '#1e40af',
+          fontSize: '0.875rem',
+          padding: '0.375rem 0.75rem',
+          borderRadius: '9999px',
+          border: '1px solid #bfdbfe',
+        }}>
+          {currentMood || 'Share how you\'re feeling'}
+        </span>
       </div>
 
       {/* 👇 Insert the View Public Profile link here */}
@@ -1107,7 +1013,7 @@ const ProfileContextSection = ({
           href={`/profile/${profile.id}`}
           style={{
             fontSize: '0.75rem',
-            color: '#b45309',
+            color: '#3b82f6',
             textDecoration: 'none',
             display: 'inline-block',
             marginBottom: '0.5rem',
@@ -1118,10 +1024,10 @@ const ProfileContextSection = ({
       )}
 
       <button
-        onClick={() => setShowGriefSetup(true)}
+        onClick={() => setShowMoodSetup(true)}
         style={{
           fontSize: '0.75rem',
-          color: '#b45309',
+          color: '#3b82f6',
           background: 'none',
           border: 'none',
           cursor: 'pointer',
@@ -1131,28 +1037,29 @@ const ProfileContextSection = ({
         }}
       >
         <Edit size={12} />
-        Edit or add another loss
+        Update your mood
       </button>
     </div>
   );
 };
+
 const CommunityPresence = ({ onlineCount }: { onlineCount: number }) => (
   <div style={{ textAlign: 'center' as const }}>
-    <p style={{ color: '#44403c', fontWeight: 500 }}>Your grief is seen here</p>
+    <p style={{ color: '#4b5563', fontWeight: 500 }}>You are not alone</p>
     <div style={{
       marginTop: '0.5rem',
       display: 'inline-flex',
       alignItems: 'center',
       gap: '0.5rem',
-      backgroundColor: '#f0fdf4',
+      backgroundColor: '#dbeafe',
       padding: '0.5rem 1rem',
       borderRadius: '9999px',
       fontSize: '0.875rem',
       fontWeight: 500,
-      color: '#166534',
-      border: '1px solid #bbf7d0',
+      color: '#1e40af',
+      border: '1px solid #bfdbfe',
     }}>
-      <Heart size={14} style={{ color: '#22c55e', fill: '#dcfce7' }} />
+      <Heart size={14} style={{ color: '#3b82f6', fill: '#dbeafe' }} />
       {onlineCount} people in community right now
     </div>
   </div>
@@ -1187,30 +1094,30 @@ const NewPostForm = ({
         width: '2.5rem',
         height: '2.5rem',
         borderRadius: '9999px',
-        backgroundColor: '#fef3c7',
+        backgroundColor: '#dbeafe',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         flexShrink: 0,
-        border: '1px solid #fde68a',
+        border: '1px solid #bfdbfe',
       }}>
         {profile?.avatarUrl ? (
           <div style={{ width: '100%', height: '100%', borderRadius: '9999px', overflow: 'hidden' }}>
             <Image
               src={profile.avatarUrl}
               alt="Your avatar"
-              width={40}   // approximate logical size; actual rendering handled by CSS
+              width={40}
               height={40}
               style={{
                 width: '100%',
                 height: '100%',
                 objectFit: 'cover',
               }}
-              unoptimized // needed if avatars are dynamic/user-uploaded from Supabase
+              unoptimized
             />
           </div>
         ) : (
-          <div style={{ color: '#92400e', fontWeight: 500, fontSize: '0.875rem' }}>
+          <div style={{ color: '#1e40af', fontWeight: 500, fontSize: '0.875rem' }}>
             {(profile?.fullName || 'U').charAt(0).toUpperCase()}
           </div>
         )}
@@ -1219,11 +1126,11 @@ const NewPostForm = ({
         <textarea
           value={newPostText}
           onChange={(e) => setNewPostText(e.target.value)}
-          placeholder="What's in your heart today? It's safe to share here..."
+          placeholder="What's on your mind today? It's safe to share here..."
           style={{
             width: '100%',
             padding: '0.5rem',
-            color: '#1c1917',
+            color: '#1e40af',
             backgroundColor: 'transparent',
             border: '1px solid #e7e5e4',
             borderRadius: '0.5rem',
@@ -1235,56 +1142,54 @@ const NewPostForm = ({
           }}
           disabled={isSubmitting}
         />
-
         {mediaPreviews.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: '0.5rem', marginTop: '0.75rem' }}>
             {mediaPreviews.map((url, i) => (
-  <div key={i} style={{
-    position: 'relative',
-    width: '5rem',
-    height: '5rem',
-    borderRadius: '0.5rem',
-    overflow: 'hidden',
-    border: '1px solid #e7e5e4',
-  }}>
-    {/* Use <img> instead of <Image> for blob URLs */}
-    <img
-      src={url}
-      alt={`Attachment ${i + 1}`}
-      style={{
-        width: '100%',
-        height: '100%',
-        objectFit: 'cover',
-        borderRadius: '0.5rem',
-      }}
-    />
-    <button
-      onClick={() => removeMedia(i)}
-      style={{
-        position: 'absolute',
-        top: '-0.25rem',
-        right: '-0.25rem',
-        backgroundColor: '#ef4444',
-        color: '#fff',
-        width: '1.25rem',
-        height: '1.25rem',
-        borderRadius: '9999px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-        border: 'none',
-        cursor: 'pointer',
-      }}
-      aria-label="Remove attachment"
-    >
-      <X size={10} />
-    </button>
-  </div>
-))}
+              <div key={i} style={{
+                position: 'relative',
+                width: '5rem',
+                height: '5rem',
+                borderRadius: '0.5rem',
+                overflow: 'hidden',
+                border: '1px solid #e7e5e4',
+              }}>
+                {/* Use <img> instead of <Image> for blob URLs */}
+                <img
+                  src={url}
+                  alt={`Attachment ${i + 1}`}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    borderRadius: '0.5rem',
+                  }}
+                />
+                <button
+                  onClick={() => removeMedia(i)}
+                  style={{
+                    position: 'absolute',
+                    top: '-0.25rem',
+                    right: '-0.25rem',
+                    backgroundColor: '#ef4444',
+                    color: '#fff',
+                    width: '1.25rem',
+                    height: '1.25rem',
+                    borderRadius: '9999px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                    border: 'none',
+                    cursor: 'pointer',
+                  }}
+                  aria-label="Remove attachment"
+                >
+                  <X size={10} />
+                </button>
+              </div>
+            ))}
           </div>
         )}
-
         <div style={{
           display: 'flex',
           flexDirection: 'column' as const,
@@ -1315,7 +1220,6 @@ const NewPostForm = ({
               {mediaFiles.length > 0 ? `Add more (${4 - mediaFiles.length} left)` : 'Add photo/video'}
             </button>
           </div>
-
           <input
             type="file"
             ref={fileInputRef}
@@ -1324,7 +1228,6 @@ const NewPostForm = ({
             multiple
             style={{ display: 'none' }}
           />
-
           <button
             onClick={handlePostSubmit}
             disabled={!newPostText.trim() || isSubmitting}
@@ -1337,13 +1240,13 @@ const NewPostForm = ({
               fontWeight: 500,
               fontSize: '0.875rem',
               backgroundColor: newPostText.trim() && !isSubmitting
-                ? '#f59e0b'
+                ? '#3b82f6'
                 : '#d6d3d1',
               color: newPostText.trim() && !isSubmitting
                 ? '#fff'
                 : '#a8a29e',
               cursor: !newPostText.trim() || isSubmitting ? 'not-allowed' : 'pointer',
-              boxShadow: newPostText.trim() && !isSubmitting ? '0 4px 6px -1px rgba(0,0,0,0.1)' : 'none',
+              boxShadow: newPostText.trim() && !isSubmitting ? '0 4px 6px -1px rgba(59,130,246,0.1)' : 'none',
             }}
           >
             {isSubmitting ? (
@@ -1371,50 +1274,47 @@ const NewPostForm = ({
   </section>
 );
 
-const PostsSection = ({ 
-  posts, 
-  currentUser, 
-  currentUserIsAnonymous 
-}: { 
-  posts: Post[]; 
+const PostsSection = ({
+  posts,
+  currentUser,
+  currentUserIsAnonymous
+}: {
+  posts: Post[];
   currentUser: UserProfile | null;
   currentUserIsAnonymous: boolean;
 }) => (
   <section>
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-      <h2 style={{ fontSize: '1.125rem', fontWeight: '600', color: '#1c1917' }}>
-        Shared Memories
+      <h2 style={{ fontSize: '1.125rem', fontWeight: '600', color: '#1e40af' }}>
+        Shared Experiences
       </h2>
       <span style={{ color: '#78716c', fontSize: '0.875rem' }}>
         {posts.length} post{posts.length !== 1 ? 's' : ''}
       </span>
     </div>
-
     {posts.length === 0 ? (
       <div style={{ textAlign: 'center', padding: '2rem', color: '#78716c' }}>
-        No memories shared yet. Be the first to share yours.
+        No experiences shared yet. Be the first to share yours.
       </div>
     ) : (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-       {posts.map((post) => (
-  <PostCard
-    key={post.id}
-    post={post}
-    isOwner={post.userId === currentUser?.id}
-    canDelete={post.userId === currentUser?.id}
-    showAuthor={true}
-    context="feed"
-    onPostDeleted={() => {
-      // Optional: trigger refetch or filter optimistically
-      // For now, we can leave it empty or implement later
-    }}
-  />
-))}
+        {posts.map((post) => (
+          <PostCard
+            key={post.id}
+            post={post}
+            isOwner={post.userId === currentUser?.id}
+            canDelete={post.userId === currentUser?.id}
+            showAuthor={true}
+            context="feed"
+            onPostDeleted={() => {
+              // Optional: trigger refetch or filter optimistically
+            }}
+          />
+        ))}
       </div>
     )}
   </section>
 );
-
 
 const SupportOptions = ({
   onConnectClick,
@@ -1424,7 +1324,7 @@ const SupportOptions = ({
   onCommunitiesClick: () => void;
 }) => (
   <section>
-    <h2 style={{ fontWeight: 600, color: '#1c1917', marginBottom: '1rem', fontSize: '1.125rem' }}>Find Support</h2>
+    <h2 style={{ fontWeight: 600, color: '#1e40af', marginBottom: '1rem', fontSize: '1.125rem' }}>Find Support</h2>
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem' }}>
       <button
         onClick={onConnectClick}
@@ -1445,15 +1345,15 @@ const SupportOptions = ({
           width: '3.5rem',
           height: '3.5rem',
           borderRadius: '9999px',
-          backgroundColor: '#fef3c7',
+          backgroundColor: '#dbeafe',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           marginBottom: '0.75rem',
         }}>
-          <MessageCircle style={{ color: '#92400e' }} size={28} />
+          <MessageCircle style={{ color: '#3b82f6' }} size={28} />
         </div>
-        <span style={{ fontWeight: 500, color: '#1c1917' }}>
+        <span style={{ fontWeight: 500, color: '#1e40af' }}>
           1:1 Support
         </span>
         <span style={{ fontSize: '0.75rem', color: '#78716c', textAlign: 'center', marginTop: '0.25rem' }}>
@@ -1479,15 +1379,15 @@ const SupportOptions = ({
           width: '3.5rem',
           height: '3.5rem',
           borderRadius: '9999px',
-          backgroundColor: '#fef3c7',
+          backgroundColor: '#dbeafe',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           marginBottom: '0.75rem',
         }}>
-          <Users style={{ color: '#92400e' }} size={28} />
+          <Users style={{ color: '#3b82f6' }} size={28} />
         </div>
-        <span style={{ fontWeight: 500, color: '#1c1917' }}>
+        <span style={{ fontWeight: 500, color: '#1e40af' }}>
           Communities
         </span>
         <span style={{ fontSize: '0.75rem', color: '#78716c', textAlign: 'center', marginTop: '0.25rem' }}>
@@ -1509,17 +1409,17 @@ const CommunityFooter = () => (
       display: 'inline-flex',
       alignItems: 'center',
       gap: '0.5rem',
-      backgroundColor: '#fffbeb',
-      color: '#92400e',
+      backgroundColor: '#dbeafe',
+      color: '#1e40af',
       padding: '0.5rem 1rem',
       borderRadius: '9999px',
-      border: '1px solid #fde68a',
+      border: '1px solid #bfdbfe',
     }}>
-      <Heart size={16} style={{ color: '#d97706', fill: '#fef3c7' }} />
+      <Heart size={16} style={{ color: '#3b82f6', fill: '#dbeafe' }} />
       <span style={{ fontWeight: 500 }}>You belong here</span>
     </div>
     <p style={{ color: '#78716c', fontSize: '0.875rem', marginTop: '0.5rem' }}>
-      This is a judgment-free space for your grief journey
+      This is a judgment-free space for your mental health journey
     </p>
   </div>
 );

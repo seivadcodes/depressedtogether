@@ -38,7 +38,7 @@ export interface Post {
   text: string;
   mediaUrl?: string | null;
   mediaUrls?: string[];
-  griefTypes: GriefType[];
+ 
   createdAt: Date;
   likes: number;
   isLiked: boolean;
@@ -171,10 +171,9 @@ export function PostCard({
 
   const hasMedia = mediaUrls.length > 0;
 
-  const gradient = useMemo(() => {
-    if (!post.griefTypes || post.griefTypes.length === 0) return defaultGradient;
-    return griefGradients[post.griefTypes[0]] || defaultGradient;
-  }, [post.griefTypes]);
+ const gradient = 'linear-gradient(135deg, #dbeafe, #bfdbfe)'; // calm blue
+// or just a solid color:
+// const gradient = '#f0f9ff';
 
   const displayAuthor = useMemo(() => {
   if (post.isAnonymous) {

@@ -41,110 +41,91 @@ export default function RoomPage() {
   const broadcastChannelRef = useRef<RealtimeChannel | null>(null);
 
 
-   const checkAndStartTimer = useCallback(
+   // Replace the existing checkAndStartTimer function with:
+
+const checkAndStartTimer = useCallback(
   async (roomId: string, roomType: RoomType, userId: string) => {
-    // Avoid re-entrancy if timer already running
+    // Use existing timer if already running
     if (timerInterval) return;
 
     try {
+      let shouldStartTimer = false;
+      let existingStartTime: Date | null = null;
+
       if (roomType === 'one-on-one') {
-        const { count } = await supabase
-          .from('room_participants')
-          .select('*', { count: 'exact', head: true })
-          .eq('room_id', roomId);
-
-        if ((count || 0) < 2) {
-          return;
-        }
-
-        const { data: req } = await supabase
+        // Get count and call_started_at in single query
+        const { data, error } = await supabase
           .from('quick_connect_requests')
-          .select('call_started_at')
+          .select('call_started_at, user_id, acceptor_id')
           .eq('room_id', roomId)
           .single();
 
-        const callStartedAt = req?.call_started_at ? new Date(req.call_started_at) : null;
-
-        if (callStartedAt) {
-          const now = new Date();
-          const diff = Math.floor((now.getTime() - callStartedAt.getTime()) / 1000);
-          setElapsedTime(diff);
-          const interval = setInterval(() => {
-            const now = new Date();
-            const diff = Math.floor((now.getTime() - callStartedAt.getTime()) / 1000);
-            setElapsedTime(diff);
-          }, 1000);
-          setTimerInterval(interval);
-        } else {
-          const now = new Date();
-          await supabase
-            .from('quick_connect_requests')
-            .update({ call_started_at: now.toISOString() })
-            .eq('room_id', roomId);
-
-          setRoomMeta((prev) => (prev ? { ...prev, callStartedAt: now } : null));
-          setElapsedTime(0);
-          const interval = setInterval(() => {
-            setElapsedTime((prev) => prev + 1);
-          }, 1000);
-          setTimerInterval(interval);
+        if (!error && data) {
+          const participants = [data.user_id, data.acceptor_id].filter(Boolean);
+          if (participants.length >= 2) {
+            shouldStartTimer = true;
+            existingStartTime = data.call_started_at ? new Date(data.call_started_at) : null;
+            
+            // If no start time and we have 2 participants, set it now
+            if (!existingStartTime) {
+              const now = new Date();
+              await supabase
+                .from('quick_connect_requests')
+                .update({ call_started_at: now.toISOString() })
+                .eq('room_id', roomId);
+              existingStartTime = now;
+            }
+          }
         }
       } else if (roomType === 'group') {
-        const { data: group } = await supabase
+        const { data, error } = await supabase
           .from('quick_group_requests')
           .select('call_started_at, user_id')
           .eq('room_id', roomId)
           .single();
 
-        if (!group) return;
-
-        const isHost = userId === group.user_id;
-        const callStartedAt = group.call_started_at ? new Date(group.call_started_at) : null;
-
-        if (isHost) {
-          if (!callStartedAt) {
-            const now = new Date();
-            await supabase
-              .from('quick_group_requests')
-              .update({ call_started_at: now.toISOString() })
-              .eq('room_id', roomId);
-
-            setRoomMeta((prev) => (prev ? { ...prev, callStartedAt: now } : null));
-            setElapsedTime(0);
-            const interval = setInterval(() => {
-              setElapsedTime((prev) => prev + 1);
-            }, 1000);
-            setTimerInterval(interval);
-          } else {
-            const now = new Date();
-            const diff = Math.floor((now.getTime() - callStartedAt.getTime()) / 1000);
-            setElapsedTime(diff);
-            const interval = setInterval(() => {
+        if (!error && data) {
+          const isHost = userId === data.user_id;
+          
+          // Start timer if host, or if timer already started
+          if (isHost || data.call_started_at) {
+            shouldStartTimer = true;
+            existingStartTime = data.call_started_at ? new Date(data.call_started_at) : null;
+            
+            if (isHost && !existingStartTime) {
               const now = new Date();
-              const diff = Math.floor((now.getTime() - callStartedAt.getTime()) / 1000);
-              setElapsedTime(diff);
-            }, 1000);
-            setTimerInterval(interval);
+              await supabase
+                .from('quick_group_requests')
+                .update({ call_started_at: now.toISOString() })
+                .eq('room_id', roomId);
+              existingStartTime = now;
+            }
           }
+        }
+      }
+
+      if (shouldStartTimer) {
+        if (existingStartTime) {
+          const now = new Date();
+          const diff = Math.floor((now.getTime() - existingStartTime.getTime()) / 1000);
+          setElapsedTime(diff > 0 ? diff : 0);
+          
+          const interval = setInterval(() => {
+            setElapsedTime(prev => prev + 1);
+          }, 1000);
+          setTimerInterval(interval);
         } else {
-          if (callStartedAt) {
-            const now = new Date();
-            const diff = Math.floor((now.getTime() - callStartedAt.getTime()) / 1000);
-            setElapsedTime(diff);
-            const interval = setInterval(() => {
-              const now = new Date();
-              const diff = Math.floor((now.getTime() - callStartedAt.getTime()) / 1000);
-              setElapsedTime(diff);
-            }, 1000);
-            setTimerInterval(interval);
-          }
+          const interval = setInterval(() => {
+            setElapsedTime(prev => prev + 1);
+          }, 1000);
+          setTimerInterval(interval);
         }
       }
     } catch (err) {
       console.error('Error in checkAndStartTimer:', err);
     }
   },
-  [supabase, timerInterval, setRoomMeta, setTimerInterval, setElapsedTime]
+  [supabase, timerInterval]
 );
 
   // 🔴 Set up Supabase broadcast listener for call_ended
@@ -173,113 +154,120 @@ export default function RoomPage() {
     }
   }, [callEndedByPeer, router]);
 
-  useEffect(() => {
-    const initializeRoom = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-          router.push('/auth');
-          return;
-        }
-        const userId = session.user.id;
-        setCurrentUserId(userId);
+  // Update the initialization useEffect with parallel operations
+// Update the initialization useEffect with parallel operations
+useEffect(() => {
+  const initializeRoom = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        router.push('/auth');
+        return;
+      }
+      
+      const userId = session.user.id;
+      setCurrentUserId(userId);
 
-        let roomType: RoomType | null = null;
-        let hostId: string | null = null;
-        let callStartedAt: Date | null = null;
-
-        // --- Check 1:1 ---
-        const { data: oneOnOne } = await supabase
-          .from('quick_connect_requests')
-          .select('user_id, acceptor_id, status, expires_at, call_started_at')
-          .eq('room_id', roomId)
-          .single();
-
-        if (oneOnOne && oneOnOne.status === 'matched') {
-          if (new Date(oneOnOne.expires_at) > new Date()) {
-            roomType = 'one-on-one';
-            hostId = oneOnOne.user_id;
-            callStartedAt = oneOnOne.call_started_at ? new Date(oneOnOne.call_started_at) : null;
-          }
-        }
-
-        // --- Check group ---
-        if (!roomType) {
-          const { data: group } = await supabase
-            .from('quick_group_requests')
-            .select('user_id, status, expires_at, call_started_at')
-            .eq('room_id', roomId)
-            .single();
-
-          if (group && new Date(group.expires_at) > new Date()) {
-            if (group.status === 'available' || group.status === 'matched') {
-              roomType = 'group';
-              hostId = group.user_id;
-              callStartedAt = group.call_started_at ? new Date(group.call_started_at) : null;
-            }
-          }
-        }
-
-        if (!roomType || !hostId) {
-          throw new Error('Room not found or expired');
-        }
-
-        // Ensure user is still a participant
-        const { data: participant } = await supabase
-          .from('room_participants')
-          .select('user_id')
-          .eq('room_id', roomId)
-          .eq('user_id', userId)
-          .single();
-
-        if (!participant) {
-          throw new Error('You are no longer in this room');
-        }
-
-        // Get user name
-        const { data: profile } = await supabase
+      // Get user profile and token in parallel
+      const [profileResult, tokenRes] = await Promise.all([
+        supabase
           .from('profiles')
           .select('full_name')
           .eq('id', userId)
-          .single();
-        const userName = profile?.full_name || session.user.email || 'Anonymous';
-
-        // Get token
-        const tokenRes = await fetch('/api/livekit/token', {
+          .single(),
+        fetch('/api/livekit/token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ room: roomId, identity: userId, name: userName }),
-        });
+          body: JSON.stringify({ 
+            room: roomId, 
+            identity: userId, 
+            name: session.user.email?.split('@')[0] || 'User' 
+          }),
+        })
+      ]);
 
-        if (!tokenRes.ok) {
-          const errData = await tokenRes.json();
-          throw new Error(errData.error || 'Failed to get LiveKit token');
-        }
-        const { token } = await tokenRes.json();
+      // Check room existence in parallel with the above
+      const roomCheck = await Promise.any([
+        supabase
+          .from('quick_connect_requests')
+          .select('user_id, status, expires_at, call_started_at')
+          .eq('room_id', roomId)
+          .single()
+          .then(res => ({ 
+            type: 'one-on-one' as RoomType, 
+            data: res.data,
+            success: !res.error 
+          })),
+        supabase
+          .from('quick_group_requests')
+          .select('user_id, status, expires_at, call_started_at')
+          .eq('room_id', roomId)
+          .single()
+          .then(res => ({ 
+            type: 'group' as RoomType, 
+            data: res.data,
+            success: !res.error 
+          }))
+      ]);
 
-        setRoomMeta({ 
-          id: roomId, 
-          type: roomType, 
-          hostId, 
-          title: roomType === 'group' ? 'Group Call' : 'Private Call', 
-          callStartedAt 
-        });
-        setToken(token);
-
-        // Start or initialize timer
-        await checkAndStartTimer(roomId, roomType, userId);
-
-      } catch (err) {
-        console.error('[RoomPage] Init error:', err);
-        setError(err instanceof Error ? err.message : 'Unknown error');
-      } finally {
-        setIsLoading(false);
+      if (!tokenRes.ok || !roomCheck.success || !roomCheck.data) {
+        throw new Error('Room not found or token generation failed');
       }
-    };
 
-    initializeRoom();
-  }, [roomId, router, supabase, checkAndStartTimer]);
+      const { token } = await tokenRes.json();
+      const { data: roomData, type: roomType } = roomCheck;
 
+      // Validate room status
+      if (!roomData || new Date(roomData.expires_at) <= new Date()) {
+        throw new Error('Room expired or not found');
+      }
+
+      // Set token immediately for faster connection
+      setToken(token);
+      
+      // Set basic room metadata
+      setRoomMeta({ 
+        id: roomId, 
+        type: roomType, 
+        hostId: roomData.user_id, 
+        title: roomType === 'group' ? 'Group Call' : 'Private Call',
+        callStartedAt: roomData.call_started_at ? new Date(roomData.call_started_at) : null
+      });
+
+      // Check participant status in background (non-blocking)
+      supabase
+        .from('room_participants')
+        .select('user_id')
+        .eq('room_id', roomId)
+        .eq('user_id', userId)
+        .single()
+        .then(({ data }) => {
+          if (!data) {
+            // Auto-join if not already a participant
+            supabase
+              .from('room_participants')
+              .upsert({
+                room_id: roomId,
+                user_id: userId,
+                role: roomType === 'group' ? 'participant' : 'participant',
+                joined_at: new Date().toISOString()
+              });
+          }
+        });
+
+      // Start timer check in background
+      checkAndStartTimer(roomId, roomType, userId);
+
+    } catch (err) {
+      console.error('[RoomPage] Init error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to join room');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  initializeRoom();
+}, [roomId, router, supabase, checkAndStartTimer]);
   // Clean up timer on unmount
   useEffect(() => {
     return () => {

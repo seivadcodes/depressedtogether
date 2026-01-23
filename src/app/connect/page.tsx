@@ -705,7 +705,7 @@ export default function ConnectPage() {
           <div>
             <h1 style={styles.title}>Depressed Together</h1>
             <p style={styles.subtitle}>
-              You're not alone. Connect with others who understand what you're going through.
+              You are not alone. Connect with others who understand what you are going through.
               No judgments, just genuine support.
             </p>
           </div>
@@ -795,7 +795,7 @@ export default function ConnectPage() {
               Need Someone to Listen?
             </h2>
             <p style={{ color: '#4b5563', marginBottom: '2rem', maxWidth: '36rem', margin: '0 auto', lineHeight: '1.6' }}>
-              Share what's on your mind with someone who gets it. One-on-one conversations can make a world of difference.
+              Share what is on your mind with someone who gets it. One-on-one conversations can make a world of difference.
             </p>
             <button
               onClick={() => setShowContextModal('one-on-one')}
@@ -1071,7 +1071,7 @@ export default function ConnectPage() {
                             fontSize: '2rem',
                             color: 'rgba(59, 130, 246, 0.2)',
                             lineHeight: 1,
-                          }}>"</div>
+                          }}></div>
                           {request.context}
                         </div>
                       )}
@@ -1163,7 +1163,7 @@ export default function ConnectPage() {
               </div>
               <h3 style={{ fontWeight: '700', color: '#1e40af', marginBottom: '0.5rem' }}>1:1 Support</h3>
               <p style={{ color: '#6b7280', fontSize: '0.95rem', lineHeight: '1.5' }}>
-                Connect privately with someone who understands depression. Share what you're going through without judgment.
+                Connect privately with someone who understands depression. Share what you are going through without judgment.
               </p>
             </div>
             <div style={styles.gridItem}>
@@ -1172,7 +1172,7 @@ export default function ConnectPage() {
               </div>
               <h3 style={{ fontWeight: '700', color: '#7c3aed', marginBottom: '0.5rem' }}>Group Circles</h3>
               <p style={{ color: '#6b7280', fontSize: '0.95rem', lineHeight: '1.5' }}>
-                Join supportive group conversations where everyone gets what you're experiencing.
+                Join supportive group conversations where everyone gets what you areexperiencing.
               </p>
             </div>
             <div style={styles.gridItem}>
@@ -1219,10 +1219,10 @@ export default function ConnectPage() {
               onClick={(e) => e.stopPropagation()}
             >
               <h3 style={{ fontWeight: '700', color: '#1e40af', marginBottom: '0.5rem', fontSize: '1.5rem' }}>
-                What's on your mind?
+                What is on your mind?
               </h3>
               <p style={{ color: '#6b7280', fontSize: '0.95rem', marginBottom: '1.5rem', lineHeight: '1.6' }}>
-                Sharing a bit about what you're experiencing helps others understand how to support you best. This is completely optional.
+                Sharing a bit about what you are experiencing helps others understand how to support you best. This is completely optional.
               </p>
               <textarea
                 autoFocus

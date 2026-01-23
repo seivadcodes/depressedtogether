@@ -97,6 +97,20 @@ interface CommunityPost {
   user_id: string;
 }
 
+
+// Even though we're not using grief types, PostCard expects this union
+type GriefType =
+  | 'parent'
+  | 'child'
+  | 'spouse'
+  | 'sibling'
+  | 'friend'
+  | 'pet'
+  | 'miscarriage'
+  | 'caregiver'
+  | 'suicide'
+  | 'other';
+
 // --- Shared Styles (Updated for Depression Theme) ---
 const baseColors = {
   primary: '#3b82f6', // blue-500
@@ -978,34 +992,38 @@ export default function CommunityDetailPage() {
   const authUsername = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Anonymous';
 
   const transformPostForCard = (post: Post) => {
-    const mediaUrls = Array.isArray(post.media_urls) && post.media_urls.length > 0
-      ? post.media_urls
-          .filter(Boolean)
-          .map(path => `/api/media/communities/${path}`)
-      : post.media_url
-        ? [`/api/media/communities/${post.media_url}`]
-        : [];
+  // Since this is a depression support platform, we don't use grief types.
+  // But PostCard requires a valid GriefType[], so we use 'other' as a neutral placeholder.
+  const griefTypes: GriefType[] = ['other'];
 
-    return {
-      id: post.id,
-      userId: post.user_id,
-      text: post.content,
-      mediaUrl: mediaUrls[0] || undefined,
-      mediaUrls,
-      griefTypes: ['other'], // unused in depression context
-      createdAt: new Date(post.created_at),
-      likes: post.likes_count,
-      isLiked: post.is_liked,
-      commentsCount: post.comments_count,
+  const mediaUrls = Array.isArray(post.media_urls) && post.media_urls.length > 0
+    ? post.media_urls
+        .filter(Boolean)
+        .map(path => `/api/media/communities/${path}`)
+    : post.media_url
+      ? [`/api/media/communities/${post.media_url}`]
+      : [];
+
+  return {
+    id: post.id,
+    userId: post.user_id,
+    text: post.content,
+    mediaUrl: mediaUrls[0] || undefined,
+    mediaUrls,
+    griefTypes, // ✅ Now correctly typed as GriefType[]
+    createdAt: new Date(post.created_at),
+    likes: post.likes_count,
+    isLiked: post.is_liked,
+    commentsCount: post.comments_count,
+    isAnonymous: post.username.toLowerCase().includes('anonymous'),
+    user: {
+      id: post.user_id,
+      fullName: post.username.toLowerCase().includes('anonymous') ? null : post.username,
+      avatarUrl: post.avatar_url,
       isAnonymous: post.username.toLowerCase().includes('anonymous'),
-      user: {
-        id: post.user_id,
-        fullName: post.username.toLowerCase().includes('anonymous') ? null : post.username,
-        avatarUrl: post.avatar_url,
-        isAnonymous: post.username.toLowerCase().includes('anonymous'),
-      },
-    };
+    },
   };
+};
 
   const mediaGalleryRoute = `/communities/${communityId}/media`;
 
@@ -1837,7 +1855,7 @@ export default function CommunityDetailPage() {
             </div>
             <div style={{ padding: spacing.xl, display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
               <p style={{ color: baseColors.text.secondary }}>
-                Please describe why you're reporting this comment. Your report helps keep our space safe.
+                Please describe why you are reporting this comment. Your report helps keep our space safe.
               </p>
               <textarea
                 value={reportReason}

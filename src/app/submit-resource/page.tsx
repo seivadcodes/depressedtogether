@@ -4,7 +4,7 @@
 import { useState, useRef } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import Link from 'next/link';
-import { BookOpen, Upload, Link as LinkIcon, AlertTriangle } from 'lucide-react';
+import { BookOpen, Upload, Link as LinkIcon, AlertTriangle, Brain, Heart } from 'lucide-react';
 import Image from 'next/image';
 
 const CATEGORIES: Record<string, string> = {
@@ -16,9 +16,9 @@ const CATEGORIES: Record<string, string> = {
 };
 
 const TAG_SUGGESTIONS = [
-  'spouse', 'parent', 'child', 'sibling', 'friend', 'pet',
-  'sudden loss', 'illness', 'suicide', 'overdose', 'estrangement',
-  'holidays', 'guilt', 'anger', 'memory', 'ritual', 'hope'
+  'depression', 'anxiety', 'sadness', 'hopelessness', 'fatigue', 'insomnia',
+  'therapy', 'medication', 'self-care', 'mindfulness', 'coping', 'support',
+  'isolation', 'recovery', 'relapse', 'treatment', 'meditation', 'exercise'
 ];
 
 export default function SubmitResourcePage() {
@@ -154,7 +154,6 @@ export default function SubmitResourcePage() {
     }
   };
 
-  // ✅ Returns STORAGE PATH, not public URL
   const uploadBookCover = async (file: File) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('User not authenticated');
@@ -165,7 +164,7 @@ export default function SubmitResourcePage() {
       .upload(fileName, file, { upsert: true });
 
     if (error) throw error;
-    return `book-covers/${fileName}`; // ✅ storage path only
+    return `book-covers/${fileName}`;
   };
 
   const uploadVideo = async (file: File) => {
@@ -178,7 +177,7 @@ export default function SubmitResourcePage() {
       .upload(fileName, file, { upsert: true, contentType: file.type });
 
     if (error) throw error;
-    return `videos/${fileName}`; // ✅ storage path only
+    return `videos/${fileName}`;
   };
 
   const validate = () => {
@@ -200,7 +199,7 @@ export default function SubmitResourcePage() {
       try {
         new URL(formData.externalUrl);
       } catch {
-        return 'Please provide a valid book link (e.g., Amazon, Bookshop).';
+        return 'Please provide a valid book link.';
       }
     }
     
@@ -272,7 +271,7 @@ export default function SubmitResourcePage() {
           excerpt: formData.excerpt.trim(),
           type: formData.type,
           category: CATEGORIES[formData.type],
-          book_cover_url: bookCoverPath, // ✅ storage path
+          book_cover_url: bookCoverPath,
           tags: formData.tags,
           content_warnings: formData.contentWarnings,
           community_source: formData.communitySource || null,
@@ -283,7 +282,7 @@ export default function SubmitResourcePage() {
             : formData.type !== 'Video' && formData.externalUrl
               ? formData.externalUrl.trim()
               : null,
-          video_url: formData.type === 'Video' ? (videoPath || null) : null, // ✅ storage path
+          video_url: formData.type === 'Video' ? (videoPath || null) : null,
           video_type: formData.type === 'Video' ? formData.videoType : null,
           status: 'pending',
           is_curated: false,
@@ -327,53 +326,135 @@ export default function SubmitResourcePage() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#f5f5f4', padding: '1.5rem 1rem' }}>
-      <div style={{ maxWidth: '640px', margin: '0 auto' }}>
-        <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-          <div
-            style={{
-              width: '2.75rem',
-              height: '2.75rem',
-              borderRadius: '9999px',
-              backgroundColor: '#fef3c7',
-              color: '#92400e',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 0.75rem',
-            }}
-          >
-            <BookOpen size={18} />
+    <div style={{ 
+      minHeight: '100vh', 
+      backgroundColor: '#f0f7ff', 
+      padding: '1.5rem 1rem',
+      background: 'linear-gradient(135deg, #f0f7ff 0%, #dbeafe 50%, #bfdbfe 100%)',
+    }}>
+      <div style={{ 
+        maxWidth: '640px', 
+        margin: '0 auto',
+        position: 'relative',
+        zIndex: 1,
+      }}>
+        <div style={{ 
+          textAlign: 'center', 
+          marginBottom: '2rem',
+          background: 'rgba(255, 255, 255, 0.9)',
+          backdropFilter: 'blur(10px)',
+          borderRadius: '1rem',
+          padding: '1.5rem',
+          border: '1px solid rgba(59, 130, 246, 0.2)',
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.05)',
+        }}>
+          <div style={{
+            width: '3.5rem',
+            height: '3.5rem',
+            borderRadius: '9999px',
+            background: 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)',
+            color: '#1e40af',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            margin: '0 auto 0.75rem',
+            border: '2px solid #3b82f6',
+          }}>
+            <Brain size={20} />
           </div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: '700', color: '#1c1917' }}>
+          <h1 style={{ 
+            fontSize: '1.875rem', 
+            fontWeight: '800', 
+            color: '#1e40af',
+            background: 'linear-gradient(135deg, #1e40af 0%, #3b82f6 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            marginBottom: '0.5rem'
+          }}>
             Share a Resource
           </h1>
-          <p style={{ color: '#44403c' }}>
-            Your experience can be a lifeline for someone else.
+          <p style={{ color: '#4b5563', fontSize: '1.125rem' }}>
+            Your experience can help others who understand depression
           </p>
         </div>
 
         {submitStatus === 'success' ? (
-          <div style={{ backgroundColor: '#fff8e1', padding: '1.25rem', borderRadius: '0.75rem', textAlign: 'center' }}>
-            <p style={{ color: '#92400e', fontWeight: '600' }}>
-              Thank you. Your resource has been submitted for review.
+          <div style={{ 
+            backgroundColor: 'rgba(255, 255, 255, 0.95)', 
+            backdropFilter: 'blur(10px)',
+            padding: '1.5rem', 
+            borderRadius: '1rem', 
+            textAlign: 'center',
+            border: '1px solid rgba(59, 130, 246, 0.2)',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.05)',
+          }}>
+            <div style={{
+              width: '3rem',
+              height: '3rem',
+              borderRadius: '9999px',
+              background: 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 1rem',
+              color: '#047857',
+            }}>
+              <Heart size={20} />
+            </div>
+            <p style={{ color: '#1e40af', fontWeight: '600', fontSize: '1.125rem' }}>
+              Thank you! Your resource has been submitted for review.
             </p>
-            <p style={{ fontSize: '0.875rem', color: '#6b6864', marginTop: '0.25rem' }}>
-              Approved resources appear on the <Link href="/resources" style={{ color: '#d97706' }}>Resources</Link> page.
+            <p style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '0.5rem' }}>
+              Approved resources appear on the{' '}
+              <Link 
+                href="/resources" 
+                style={{ 
+                  color: '#3b82f6', 
+                  fontWeight: '600',
+                  textDecoration: 'none',
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.textDecoration = 'underline'}
+                onMouseLeave={(e) => e.currentTarget.style.textDecoration = 'none'}
+              >
+                Resources
+              </Link>{' '}
+              page.
             </p>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} style={{ backgroundColor: 'white', padding: '1.5rem', borderRadius: '0.75rem', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+          <form onSubmit={handleSubmit} style={{ 
+            backgroundColor: 'rgba(255, 255, 255, 0.95)', 
+            backdropFilter: 'blur(10px)',
+            padding: '1.5rem', 
+            borderRadius: '1rem', 
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.05)',
+            border: '1px solid rgba(59, 130, 246, 0.2)',
+          }}>
             {submitStatus === 'error' && (
-              <div style={{ backgroundColor: '#fee2e2', color: '#b91c1c', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+              <div style={{ 
+                backgroundColor: '#fee2e2', 
+                color: '#b91c1c', 
+                padding: '0.75rem', 
+                borderRadius: '0.5rem', 
+                marginBottom: '1rem', 
+                display: 'flex', 
+                gap: '0.5rem', 
+                alignItems: 'flex-start',
+                border: '1px solid #fecaca',
+              }}>
                 <AlertTriangle size={18} style={{ marginTop: '0.25rem', flexShrink: 0 }} />
                 <span>{errorMessage}</span>
               </div>
             )}
 
             {/* Type */}
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '600' }}>
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ 
+                display: 'block', 
+                marginBottom: '0.5rem', 
+                fontWeight: '600',
+                color: '#1e40af'
+              }}>
                 Resource Type
               </label>
               <select
@@ -382,10 +463,17 @@ export default function SubmitResourcePage() {
                 onChange={handleChange}
                 style={{
                   width: '100%',
-                  padding: '0.5rem',
+                  padding: '0.75rem',
                   border: '1px solid #d1d5db',
-                  borderRadius: '0.375rem',
+                  borderRadius: '0.75rem',
+                  backgroundColor: 'white',
+                  color: '#374151',
+                  fontSize: '0.875rem',
+                  transition: 'all 150ms ease-in-out',
+                  cursor: 'pointer',
                 }}
+                onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+                onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
               >
                 <option value="Story">Personal Story</option>
                 <option value="Guide">Guide / Advice</option>
@@ -396,31 +484,49 @@ export default function SubmitResourcePage() {
             </div>
 
             {/* Title */}
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '600' }}>
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ 
+                display: 'block', 
+                marginBottom: '0.5rem', 
+                fontWeight: '600',
+                color: '#1e40af'
+              }}>
                 Title
               </label>
               <input
                 name="title"
                 value={formData.title}
                 onChange={handleChange}
-                placeholder={formData.type === 'Book' 
-                  ? "Book title" 
-                  : formData.type === 'Video'
-                    ? "Video title"
-                    : "A meaningful title"}
+                placeholder={
+                  formData.type === 'Book' 
+                    ? "Book title" 
+                    : formData.type === 'Video'
+                      ? "Video title"
+                      : "A meaningful title about depression support"
+                }
                 style={{
                   width: '100%',
-                  padding: '0.5rem',
+                  padding: '0.75rem',
                   border: '1px solid #d1d5db',
-                  borderRadius: '0.375rem',
+                  borderRadius: '0.75rem',
+                  backgroundColor: 'white',
+                  color: '#374151',
+                  fontSize: '0.875rem',
+                  transition: 'all 150ms ease-in-out',
                 }}
+                onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+                onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
               />
             </div>
 
             {/* Excerpt */}
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '600' }}>
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ 
+                display: 'block', 
+                marginBottom: '0.5rem', 
+                fontWeight: '600',
+                color: '#1e40af'
+              }}>
                 {formData.type === 'Book'
                   ? 'Why this book helped you'
                   : formData.type === 'Video'
@@ -431,42 +537,61 @@ export default function SubmitResourcePage() {
                 name="excerpt"
                 value={formData.excerpt}
                 onChange={handleChange}
-                rows={3}
-                placeholder={formData.type === 'Book'
-                  ? "e.g., 'This book made me feel seen in my anger...'"
-                  : formData.type === 'Video'
-                    ? "e.g., 'This short film captures the feeling of grief beautifully...'"
-                    : "Share what this resource offers or your experience"}
+                rows={4}
+                placeholder={
+                  formData.type === 'Book'
+                    ? "e.g., 'This book helped me understand my depression in a new way...'"
+                    : formData.type === 'Video'
+                      ? "e.g., 'This video helped me feel less alone in my struggle...'"
+                      : "Share what this resource offers or your experience with depression"
+                }
                 style={{
                   width: '100%',
-                  padding: '0.5rem',
+                  padding: '0.75rem',
                   border: '1px solid #d1d5db',
-                  borderRadius: '0.375rem',
+                  borderRadius: '0.75rem',
+                  backgroundColor: 'white',
+                  color: '#374151',
+                  fontSize: '0.875rem',
                   resize: 'vertical',
+                  transition: 'all 150ms ease-in-out',
+                  minHeight: '120px',
                 }}
+                onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+                onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
               />
             </div>
 
             {/* Video Options */}
             {formData.type === 'Video' && (
-              <div style={{ marginBottom: '1rem', border: '1px solid #e5e7eb', borderRadius: '0.5rem', padding: '1rem' }}>
+              <div style={{ 
+                marginBottom: '1.5rem', 
+                border: '1px solid rgba(59, 130, 246, 0.2)', 
+                borderRadius: '0.75rem', 
+                padding: '1.25rem',
+                backgroundColor: 'rgba(219, 234, 254, 0.3)',
+              }}>
                 <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
                   <button
                     type="button"
                     onClick={() => handleVideoTypeChange('link')}
                     style={{
                       flex: 1,
-                      padding: '0.5rem',
-                      border: formData.videoType === 'link' ? '2px solid #f59e0b' : '1px solid #d1d5db',
-                      borderRadius: '0.375rem',
-                      backgroundColor: formData.videoType === 'link' ? '#fef3c7' : 'white',
+                      padding: '0.75rem',
+                      border: formData.videoType === 'link' ? '2px solid #3b82f6' : '1px solid #d1d5db',
+                      borderRadius: '0.75rem',
+                      backgroundColor: formData.videoType === 'link' ? '#dbeafe' : 'white',
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
-                      gap: '0.25rem',
+                      gap: '0.5rem',
+                      color: formData.videoType === 'link' ? '#1e40af' : '#4b5563',
+                      fontWeight: formData.videoType === 'link' ? '600' : '400',
+                      cursor: 'pointer',
+                      transition: 'all 150ms ease-in-out',
                     }}
                   >
-                    <LinkIcon size={18} />
+                    <LinkIcon size={20} />
                     <span style={{ fontSize: '0.875rem' }}>Link</span>
                   </button>
                   <button
@@ -474,24 +599,33 @@ export default function SubmitResourcePage() {
                     onClick={() => handleVideoTypeChange('upload')}
                     style={{
                       flex: 1,
-                      padding: '0.5rem',
-                      border: formData.videoType === 'upload' ? '2px solid #f59e0b' : '1px solid #d1d5db',
-                      borderRadius: '0.375rem',
-                      backgroundColor: formData.videoType === 'upload' ? '#fef3c7' : 'white',
+                      padding: '0.75rem',
+                      border: formData.videoType === 'upload' ? '2px solid #3b82f6' : '1px solid #d1d5db',
+                      borderRadius: '0.75rem',
+                      backgroundColor: formData.videoType === 'upload' ? '#dbeafe' : 'white',
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
-                      gap: '0.25rem',
+                      gap: '0.5rem',
+                      color: formData.videoType === 'upload' ? '#1e40af' : '#4b5563',
+                      fontWeight: formData.videoType === 'upload' ? '600' : '400',
+                      cursor: 'pointer',
+                      transition: 'all 150ms ease-in-out',
                     }}
                   >
-                    <Upload size={18} />
+                    <Upload size={20} />
                     <span style={{ fontSize: '0.875rem' }}>Upload</span>
                   </button>
                 </div>
 
                 {formData.videoType === 'link' ? (
                   <div>
-                    <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '600' }}>
+                    <label style={{ 
+                      display: 'block', 
+                      marginBottom: '0.5rem', 
+                      fontWeight: '600',
+                      color: '#1e40af'
+                    }}>
                       Video Link
                     </label>
                     <input
@@ -502,10 +636,16 @@ export default function SubmitResourcePage() {
                       type="url"
                       style={{
                         width: '100%',
-                        padding: '0.5rem',
+                        padding: '0.75rem',
                         border: '1px solid #d1d5db',
-                        borderRadius: '0.375rem',
+                        borderRadius: '0.75rem',
+                        backgroundColor: 'white',
+                        color: '#374151',
+                        fontSize: '0.875rem',
+                        transition: 'all 150ms ease-in-out',
                       }}
+                      onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+                      onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
                       required
                     />
                     <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
@@ -514,21 +654,29 @@ export default function SubmitResourcePage() {
                   </div>
                 ) : (
                   <div>
-                    <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '600' }}>
+                    <label style={{ 
+                      display: 'block', 
+                      marginBottom: '0.5rem', 
+                      fontWeight: '600',
+                      color: '#1e40af'
+                    }}>
                       Upload Video (max 100MB)
                     </label>
                     <div 
                       style={{ 
                         border: '2px dashed #d1d5db', 
-                        borderRadius: '0.375rem',
+                        borderRadius: '0.75rem',
                         padding: '1.5rem',
                         textAlign: 'center',
                         cursor: 'pointer',
-                        backgroundColor: formData.videoPreview ? '#f9fafb' : 'white',
+                        backgroundColor: formData.videoPreview ? '#f8fafc' : 'white',
                         position: 'relative',
-                        overflow: 'hidden'
+                        overflow: 'hidden',
+                        transition: 'all 150ms ease-in-out',
                       }}
                       onClick={() => fileInputRef.current?.click()}
+                      onMouseEnter={(e) => e.currentTarget.style.borderColor = '#3b82f6'}
+                      onMouseLeave={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
                     >
                       <input
                         type="file"
@@ -546,11 +694,12 @@ export default function SubmitResourcePage() {
                             style={{ 
                               maxWidth: '100%',
                               maxHeight: '150px',
-                              borderRadius: '0.25rem',
-                              marginBottom: '0.5rem'
+                              borderRadius: '0.5rem',
+                              marginBottom: '0.5rem',
+                              backgroundColor: '#000',
                             }} 
                           />
-                          <p style={{ fontSize: '0.875rem', fontWeight: '500' }}>
+                          <p style={{ fontSize: '0.875rem', fontWeight: '500', color: '#1e40af' }}>
                             {formData.videoFile?.name}
                           </p>
                           <p style={{ fontSize: '0.75rem', color: '#6b7280' }}>
@@ -577,44 +726,71 @@ export default function SubmitResourcePage() {
             {/* Book fields */}
             {formData.type === 'Book' && (
               <>
-                <div style={{ marginBottom: '1rem' }}>
-                  <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '600' }}>
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '0.5rem', 
+                    fontWeight: '600',
+                    color: '#1e40af'
+                  }}>
                     Author
                   </label>
                   <input
                     name="bookAuthor"
                     value={formData.bookAuthor}
                     onChange={handleChange}
-                    placeholder="e.g., Megan Devine"
+                    placeholder="e.g., Andrew Solomon"
                     style={{
                       width: '100%',
-                      padding: '0.5rem',
+                      padding: '0.75rem',
                       border: '1px solid #d1d5db',
-                      borderRadius: '0.375rem',
+                      borderRadius: '0.75rem',
+                      backgroundColor: 'white',
+                      color: '#374151',
+                      fontSize: '0.875rem',
+                      transition: 'all 150ms ease-in-out',
                     }}
+                    onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
                   />
                 </div>
 
-                <div style={{ marginBottom: '1rem' }}>
-                  <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '600' }}>
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '0.5rem', 
+                    fontWeight: '600',
+                    color: '#1e40af'
+                  }}>
                     Short Quote (max 150 chars)
                   </label>
                   <input
                     name="bookQuote"
                     value={formData.bookQuote}
                     onChange={handleChange}
-                    placeholder="e.g., 'Grief is love with nowhere to go.'"
+                    placeholder="e.g., 'The opposite of depression is not happiness, but vitality.'"
                     style={{
                       width: '100%',
-                      padding: '0.5rem',
+                      padding: '0.75rem',
                       border: '1px solid #d1d5db',
-                      borderRadius: '0.375rem',
+                      borderRadius: '0.75rem',
+                      backgroundColor: 'white',
+                      color: '#374151',
+                      fontSize: '0.875rem',
+                      transition: 'all 150ms ease-in-out',
                     }}
+                    onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
                   />
                 </div>
 
-                <div style={{ marginBottom: '1rem' }}>
-                  <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '600' }}>
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '0.5rem', 
+                    fontWeight: '600',
+                    color: '#1e40af'
+                  }}>
                     Link to Book
                   </label>
                   <input
@@ -625,27 +801,41 @@ export default function SubmitResourcePage() {
                     type="url"
                     style={{
                       width: '100%',
-                      padding: '0.5rem',
+                      padding: '0.75rem',
                       border: '1px solid #d1d5db',
-                      borderRadius: '0.375rem',
+                      borderRadius: '0.75rem',
+                      backgroundColor: 'white',
+                      color: '#374151',
+                      fontSize: '0.875rem',
+                      transition: 'all 150ms ease-in-out',
                     }}
+                    onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
                   />
                 </div>
 
-                <div style={{ marginBottom: '1rem' }}>
-                  <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '600' }}>
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '0.5rem', 
+                    fontWeight: '600',
+                    color: '#1e40af'
+                  }}>
                     Book Cover (optional)
                   </label>
                   <div
                     style={{
                       border: '2px dashed #d1d5db',
-                      borderRadius: '0.375rem',
-                      padding: '1rem',
+                      borderRadius: '0.75rem',
+                      padding: '1.25rem',
                       textAlign: 'center',
                       cursor: 'pointer',
                       backgroundColor: '#f9fafb',
+                      transition: 'all 150ms ease-in-out',
                     }}
                     onClick={() => document.getElementById('bookCoverInput')?.click()}
+                    onMouseEnter={(e) => e.currentTarget.style.borderColor = '#3b82f6'}
+                    onMouseLeave={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
                   >
                     <input
                       id="bookCoverInput"
@@ -663,8 +853,9 @@ export default function SubmitResourcePage() {
                         style={{
                           maxHeight: '150px',
                           maxWidth: '100%',
-                          borderRadius: '0.25rem',
+                          borderRadius: '0.5rem',
                           objectFit: 'contain',
+                          margin: '0 auto',
                         }}
                         unoptimized
                       />
@@ -683,8 +874,13 @@ export default function SubmitResourcePage() {
 
             {/* External URL for non-video, non-book resources */}
             {formData.type !== 'Book' && formData.type !== 'Video' && (
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '600' }}>
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ 
+                  display: 'block', 
+                  marginBottom: '0.5rem', 
+                  fontWeight: '600',
+                  color: '#1e40af'
+                }}>
                   Resource Link (optional)
                 </label>
                 <input
@@ -695,150 +891,225 @@ export default function SubmitResourcePage() {
                   type="url"
                   style={{
                     width: '100%',
-                    padding: '0.5rem',
+                    padding: '0.75rem',
                     border: '1px solid #d1d5db',
-                    borderRadius: '0.375rem',
+                    borderRadius: '0.75rem',
+                    backgroundColor: 'white',
+                    color: '#374151',
+                    fontSize: '0.875rem',
+                    transition: 'all 150ms ease-in-out',
                   }}
+                  onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+                  onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
                 />
               </div>
             )}
 
             {/* Community Source */}
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '600' }}>
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ 
+                display: 'block', 
+                marginBottom: '0.5rem', 
+                fontWeight: '600',
+                color: '#1e40af'
+              }}>
                 Shared in community (optional)
               </label>
               <input
                 name="communitySource"
                 value={formData.communitySource}
                 onChange={handleChange}
-                placeholder="e.g., Loss of a Parent"
+                placeholder="e.g., Depression Support Group"
                 style={{
                   width: '100%',
-                  padding: '0.5rem',
+                  padding: '0.75rem',
                   border: '1px solid #d1d5db',
-                  borderRadius: '0.375rem',
+                  borderRadius: '0.75rem',
+                  backgroundColor: 'white',
+                  color: '#374151',
+                  fontSize: '0.875rem',
+                  transition: 'all 150ms ease-in-out',
                 }}
+                onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+                onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
               />
             </div>
 
             {/* Tags */}
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '600' }}>
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ 
+                display: 'block', 
+                marginBottom: '0.5rem', 
+                fontWeight: '600',
+                color: '#1e40af'
+              }}>
                 Tags (up to 5)
               </label>
-              <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '0.25rem' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
                 <input
                   value={newTag}
                   onChange={(e) => setNewTag(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleTagAdd())}
-                  placeholder="Add a tag"
+                  placeholder="Add a tag (e.g., depression, self-care)"
                   style={{
                     flex: 1,
-                    padding: '0.25rem 0.5rem',
+                    padding: '0.5rem 0.75rem',
                     border: '1px solid #d1d5db',
                     borderRadius: '9999px',
                     fontSize: '0.875rem',
+                    backgroundColor: 'white',
+                    color: '#374151',
+                    transition: 'all 150ms ease-in-out',
                   }}
+                  onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+                  onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
                 />
                 <button
                   type="button"
                   onClick={handleTagAdd}
                   style={{
-                    padding: '0.25rem 0.75rem',
-                    backgroundColor: '#e5e5e4',
-                    border: 'none',
+                    padding: '0.5rem 1rem',
+                    backgroundColor: '#dbeafe',
+                    border: '1px solid #3b82f6',
                     borderRadius: '9999px',
-                    fontWeight: '500',
+                    fontWeight: '600',
+                    color: '#1e40af',
+                    cursor: 'pointer',
+                    transition: 'all 150ms ease-in-out',
                   }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#3b82f6'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#dbeafe'}
                 >
                   Add
                 </button>
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginTop: '0.25rem' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.5rem' }}>
                 {formData.tags.map(tag => (
                   <span
                     key={tag}
                     style={{
-                      padding: '0.125rem 0.5rem',
-                      backgroundColor: '#fef3c7',
-                      color: '#92400e',
+                      padding: '0.375rem 0.75rem',
+                      backgroundColor: '#dbeafe',
+                      color: '#1e40af',
                       borderRadius: '9999px',
                       fontSize: '0.75rem',
+                      fontWeight: '500',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '0.25rem',
+                      gap: '0.375rem',
+                      border: '1px solid rgba(59, 130, 246, 0.3)',
                     }}
                   >
                     {tag}
                     <button
                       type="button"
                       onClick={() => handleTagRemove(tag)}
-                      style={{ background: 'none', border: 'none', color: '#92400e', fontSize: '1rem' }}
+                      style={{ 
+                        background: 'none', 
+                        border: 'none', 
+                        color: '#1e40af', 
+                        fontSize: '1rem',
+                        cursor: 'pointer',
+                        padding: 0,
+                        width: '16px',
+                        height: '16px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
                     >
                       ×
                     </button>
                   </span>
                 ))}
               </div>
-              <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
-                Suggestions: {TAG_SUGGESTIONS.slice(0, 8).join(', ')}
+              <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.5rem' }}>
+                Suggestions: {TAG_SUGGESTIONS.slice(0, 6).join(', ')}
               </div>
             </div>
 
             {/* Content Warnings */}
-            <div style={{ marginBottom: '1.5rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '600' }}>
+            <div style={{ marginBottom: '2rem' }}>
+              <label style={{ 
+                display: 'block', 
+                marginBottom: '0.5rem', 
+                fontWeight: '600',
+                color: '#1e40af'
+              }}>
                 Content Warnings (optional)
               </label>
-              <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '0.25rem' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
                 <input
                   value={newWarning}
                   onChange={(e) => setNewWarning(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleWarningAdd())}
-                  placeholder="e.g., suicide, child loss"
+                  placeholder="e.g., suicide mention, self-harm"
                   style={{
                     flex: 1,
-                    padding: '0.25rem 0.5rem',
+                    padding: '0.5rem 0.75rem',
                     border: '1px solid #d1d5db',
                     borderRadius: '9999px',
                     fontSize: '0.875rem',
+                    backgroundColor: 'white',
+                    color: '#374151',
+                    transition: 'all 150ms ease-in-out',
                   }}
+                  onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+                  onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
                 />
                 <button
                   type="button"
                   onClick={handleWarningAdd}
                   style={{
-                    padding: '0.25rem 0.75rem',
-                    backgroundColor: '#e5e5e4',
-                    border: 'none',
+                    padding: '0.5rem 1rem',
+                    backgroundColor: '#f3e8ff',
+                    border: '1px solid #8b5cf6',
                     borderRadius: '9999px',
-                    fontWeight: '500',
+                    fontWeight: '600',
+                    color: '#7c3aed',
+                    cursor: 'pointer',
+                    transition: 'all 150ms ease-in-out',
                   }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#8b5cf6'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f3e8ff'}
                 >
                   Add
                 </button>
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginTop: '0.25rem' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.5rem' }}>
                 {formData.contentWarnings.map(warning => (
                   <span
                     key={warning}
                     style={{
-                      padding: '0.125rem 0.5rem',
+                      padding: '0.375rem 0.75rem',
                       backgroundColor: '#f3e8ff',
-                      color: '#7e22ce',
+                      color: '#7c3aed',
                       borderRadius: '9999px',
                       fontSize: '0.75rem',
+                      fontWeight: '500',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '0.25rem',
+                      gap: '0.375rem',
+                      border: '1px solid rgba(139, 92, 246, 0.3)',
                     }}
                   >
                     {warning}
                     <button
                       type="button"
                       onClick={() => handleWarningRemove(warning)}
-                      style={{ background: 'none', border: 'none', color: '#7e22ce', fontSize: '1rem' }}
+                      style={{ 
+                        background: 'none', 
+                        border: 'none', 
+                        color: '#7c3aed', 
+                        fontSize: '1rem',
+                        cursor: 'pointer',
+                        padding: 0,
+                        width: '16px',
+                        height: '16px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
                     >
                       ×
                     </button>
@@ -852,17 +1123,34 @@ export default function SubmitResourcePage() {
               disabled={isSubmitting || isUploading}
               style={{
                 width: '100%',
-                padding: '0.75rem',
-                backgroundColor: isSubmitting || isUploading ? '#d1d5db' : '#f59e0b',
+                padding: '0.875rem',
+                background: isSubmitting || isUploading 
+                  ? 'linear-gradient(135deg, #93c5fd 0%, #60a5fa 100%)' 
+                  : 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
                 color: 'white',
                 border: 'none',
-                borderRadius: '0.5rem',
+                borderRadius: '0.75rem',
                 fontWeight: '600',
+                fontSize: '1rem',
                 cursor: isSubmitting || isUploading ? 'not-allowed' : 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: '0.5rem'
+                gap: '0.5rem',
+                transition: 'all 300ms ease-in-out',
+                boxShadow: '0 4px 20px rgba(59, 130, 246, 0.3)',
+              }}
+              onMouseEnter={(e) => {
+                if (!isSubmitting && !isUploading) {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 8px 30px rgba(59, 130, 246, 0.4)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isSubmitting && !isUploading) {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 4px 20px rgba(59, 130, 246, 0.3)';
+                }
               }}
             >
               {isUploading ? (
@@ -880,16 +1168,29 @@ export default function SubmitResourcePage() {
               ) : isSubmitting ? (
                 'Submitting...'
               ) : (
-                'Submit for Review'
+                <>
+                  <BookOpen size={18} />
+                  Submit for Review
+                </>
               )}
             </button>
           </form>
         )}
 
-        <div style={{ marginTop: '1.5rem', textAlign: 'center', fontSize: '0.875rem', color: '#6b7280' }}>
-          <p>All submissions are reviewed before appearing publicly.</p>
+        <div style={{ 
+          marginTop: '2rem', 
+          textAlign: 'center', 
+          fontSize: '0.875rem', 
+          color: '#4b5563',
+          padding: '1rem',
+          backgroundColor: 'rgba(255, 255, 255, 0.9)',
+          backdropFilter: 'blur(10px)',
+          borderRadius: '0.75rem',
+          border: '1px solid rgba(59, 130, 246, 0.2)',
+        }}>
+          <p><strong>Important:</strong> All submissions are reviewed before appearing publicly.</p>
           <p style={{ marginTop: '0.25rem' }}>
-            Video uploads are stored securely and only accessible after approval
+            Video uploads are stored securely and only accessible after approval.
           </p>
         </div>
       </div>

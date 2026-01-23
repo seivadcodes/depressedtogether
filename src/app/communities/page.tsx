@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Users, MessageCircle, Plus, ArrowRight } from 'lucide-react';
+import { Users, MessageCircle, Plus, ArrowRight, Brain, Heart } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
 import Button from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
@@ -14,26 +14,27 @@ interface Community {
   description: string;
   member_count: number;
   online_count: number;
-  grief_type: string;
+  topic: string;
   created_at: string;
   cover_photo_url?: string | null;
 }
 
-// Gradient mapping by grief type
-const griefGradients: Record<string, string> = {
-  parent: 'linear-gradient(135deg, #fcd34d, #f97316)',
-  child: 'linear-gradient(135deg, #d8b4fe, #8b5cf6)',
-  spouse: 'linear-gradient(135deg, #fda4af, #ec4899)',
-  sibling: 'linear-gradient(135deg, #5eead4, #06b6d4)',
-  friend: 'linear-gradient(135deg, #93c5fd, #6366f1)',
-  pet: 'linear-gradient(135deg, #fef08a, #f59e0b)',
-  miscarriage: 'linear-gradient(135deg, #fbcfe8, #e11d48)',
-  caregiver: 'linear-gradient(135deg, #e5e7eb, #f59e0b)',
-  suicide: 'linear-gradient(135deg, #ddd6fe, #a78bfa)',
-  other: 'linear-gradient(135deg, #e5e7eb, #9ca3af)',
+// Gradient mapping by depression topic
+const topicGradients: Record<string, string> = {
+  'general-depression': 'linear-gradient(135deg, #93c5fd, #3b82f6)',
+  'anxiety': 'linear-gradient(135deg, #c7d2fe, #6366f1)',
+  'therapy': 'linear-gradient(135deg, #a5f3fc, #06b6d4)',
+  'medication': 'linear-gradient(135deg, #d8b4fe, #a855f7)',
+  'self-care': 'linear-gradient(135deg, #86efac, #22c55e)',
+  'mindfulness': 'linear-gradient(135deg, #fde68a, #f59e0b)',
+  'burnout': 'linear-gradient(135deg, #fca5a5, #ef4444)',
+  'social-anxiety': 'linear-gradient(135deg, #f9a8d4, #ec4899)',
+  'recovery': 'linear-gradient(135deg, #c4b5fd, #8b5cf6)',
+  'support': 'linear-gradient(135deg, #a5b4fc, #4f46e5)',
+  'other': 'linear-gradient(135deg, #e5e7eb, #9ca3af)',
 };
 
-const defaultGradient = 'linear-gradient(135deg, #fcd34d, #f97316)';
+const defaultGradient = 'linear-gradient(135deg, #93c5fd, #3b82f6)';
 
 export default function CommunitiesPage() {
   const [communities, setCommunities] = useState<Community[]>([]);
@@ -83,12 +84,11 @@ export default function CommunitiesPage() {
 
         if (data) {
           const communitiesWithPhotos = data.map((community) => ({
-  ...community,
-  // ✅ Correct: proxy the stored path directly — no extra prefix
-  cover_photo_url: community.cover_photo_url
-    ? `/api/media/${community.cover_photo_url}`
-    : null,
-}));
+            ...community,
+            cover_photo_url: community.cover_photo_url
+              ? `/api/media/${community.cover_photo_url}`
+              : null,
+          }));
 
           setCommunities(communitiesWithPhotos);
           const total = communitiesWithPhotos.reduce((sum, c) => sum + c.online_count, 0);
@@ -145,7 +145,7 @@ export default function CommunitiesPage() {
       <div
         style={{
           minHeight: '100vh',
-          background: 'linear-gradient(to bottom, #fffbeb, #f5f5f1, #f0f0ee)',
+          background: 'linear-gradient(135deg, #f0f7ff 0%, #dbeafe 50%, #bfdbfe 100%)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -158,13 +158,13 @@ export default function CommunitiesPage() {
               height: '3rem',
               width: '3rem',
               borderRadius: '9999px',
-              border: '4px solid #f59e0b',
+              border: '4px solid #3b82f6',
               borderTopColor: 'transparent',
               animation: 'spin 1s linear infinite',
               margin: '0 auto 1rem',
             }}
           />
-          <p style={{ color: '#64748b' }}>Loading communities...</p>
+          <p style={{ color: '#4b5563' }}>Loading communities...</p>
         </div>
       </div>
     );
@@ -176,7 +176,7 @@ export default function CommunitiesPage() {
       <div
         style={{
           minHeight: '100vh',
-          background: 'linear-gradient(to bottom, #fffbeb, #f5f5f1, #f0f0ee)',
+          background: 'linear-gradient(135deg, #f0f7ff 0%, #dbeafe 50%, #bfdbfe 100%)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -185,30 +185,42 @@ export default function CommunitiesPage() {
       >
         <div
           style={{
-            background: 'white',
-            borderRadius: '0.75rem',
+            background: 'rgba(255, 255, 255, 0.95)',
+            backdropFilter: 'blur(10px)',
+            borderRadius: '1rem',
             padding: '1.5rem',
             maxWidth: '28rem',
             textAlign: 'center',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+            boxShadow: '0 8px 30px rgba(0,0,0,0.08)',
+            border: '1px solid rgba(59, 130, 246, 0.2)',
           }}
         >
-          <div style={{ color: '#f59e0b', marginBottom: '0.75rem' }}>
-            <Users size={48} style={{ margin: '0 auto' }} />
+          <div style={{ color: '#3b82f6', marginBottom: '0.75rem' }}>
+            <Brain size={48} style={{ margin: '0 auto' }} />
           </div>
-          <h2 style={{ fontSize: '1.25rem', fontWeight: '700', color: '#1e293b', marginBottom: '0.5rem' }}>
+          <h2 style={{ fontSize: '1.25rem', fontWeight: '700', color: '#1e40af', marginBottom: '0.5rem' }}>
             Error Loading Communities
           </h2>
-          <p style={{ color: '#64748b', marginBottom: '1rem' }}>{error}</p>
+          <p style={{ color: '#6b7280', marginBottom: '1rem' }}>{error}</p>
           <Button
             onClick={() => router.refresh()}
             style={{
-              background: '#f59e0b',
+              background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
               color: 'white',
               border: 'none',
               padding: '0.5rem 1.25rem',
-              borderRadius: '0.5rem',
+              borderRadius: '0.75rem',
               cursor: 'pointer',
+              fontWeight: '600',
+              transition: 'all 300ms ease-in-out',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-2px)';
+              e.currentTarget.style.boxShadow = '0 8px 20px rgba(59, 130, 246, 0.3)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = 'none';
             }}
           >
             Try Again
@@ -220,8 +232,8 @@ export default function CommunitiesPage() {
 
   const containerStyle: React.CSSProperties = {
     minHeight: '100vh',
-    background: 'linear-gradient(to bottom, #fffbeb, #f5f5f1, #f0f0ee)',
-    paddingTop: '5rem',
+    background: 'linear-gradient(135deg, #f0f7ff 0%, #dbeafe 50%, #bfdbfe 100%)',
+    paddingTop: '2rem',
     paddingBottom: '2rem',
     paddingLeft: '1rem',
     paddingRight: '1rem',
@@ -242,43 +254,65 @@ export default function CommunitiesPage() {
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
           <div
             style={{
-              width: '3.5rem',
-              height: '3.5rem',
+              width: '4rem',
+              height: '4rem',
               borderRadius: '9999px',
-              background: griefGradients.parent,
+              background: 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               margin: '0 auto 1rem',
+              border: '2px solid #3b82f6',
+              boxShadow: '0 4px 20px rgba(59, 130, 246, 0.2)',
             }}
           >
-            <Users size={28} color="white" />
+            <Users size={28} color="#1e40af" />
           </div>
           <h1
             style={{
-              fontSize: '1.875rem',
-              fontWeight: '700',
-              color: '#1e293b',
+              fontSize: '2.25rem',
+              fontWeight: '800',
+              color: '#1e40af',
               marginBottom: '0.5rem',
+              background: 'linear-gradient(135deg, #1e40af 0%, #3b82f6 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
             }}
           >
-            Find Your Tribe
+            Find Your Support Circle
           </h1>
-          <p style={{ color: '#64748b', maxWidth: '42rem', margin: '0 auto 1rem' }}>
-            Join a circle where your grief is understood — not explained away. Share your story, read others&apos; stories, or simply be present.
-          </p>
+          <p style={{ 
+  color: '#4b5563', 
+  maxWidth: '42rem', 
+  margin: '0 auto 1rem',
+  fontSize: '1.125rem',
+  lineHeight: '1.6'
+}}>
+  Join a community where your depression is understood &mdash; not explained away. Share your story, read others&rsquo; stories, or simply be present.
+</p>
           <div
             style={{
               display: 'inline-block',
-              padding: '0.5rem 1rem',
+              padding: '0.5rem 1.25rem',
               borderRadius: '9999px',
-              background: '#dcfce7',
+              background: 'rgba(34, 197, 94, 0.15)',
               color: '#166534',
               fontSize: '0.875rem',
               fontWeight: '600',
+              backdropFilter: 'blur(10px)',
+              border: '1px solid rgba(34, 197, 94, 0.2)',
             }}
           >
-            🟢 {formattedOnlineText} in communities right now
+            <span style={{ 
+              width: '0.75rem', 
+              height: '0.75rem', 
+              backgroundColor: '#10b981', 
+              borderRadius: '50%',
+              display: 'inline-block',
+              marginRight: '0.5rem',
+              animation: 'pulse 2s infinite',
+            }}></span>
+            {formattedOnlineText} in communities right now
           </div>
         </div>
 
@@ -291,34 +325,53 @@ export default function CommunitiesPage() {
               style={{
                 display: 'block',
                 textDecoration: 'none',
-                transition: 'transform 0.15s ease-in-out',
+                transition: 'transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out',
                 marginBottom: '1.25rem',
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.01)')}
-              onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+              onMouseEnter={(e) => (e.currentTarget.style.transform = 'translateY(-4px)')}
+              onMouseLeave={(e) => (e.currentTarget.style.transform = 'translateY(0)')}
             >
               <div
                 style={{
-                  background: 'white',
-                  borderRadius: '0.75rem',
-                  border: '1px solid #e2e8f0',
-                  padding: '1rem',
-                  boxShadow: '0 2px 6px rgba(0,0,0,0.04)',
-                  transition: 'box-shadow 0.2s ease',
+                  background: 'rgba(255, 255, 255, 0.95)',
+                  backdropFilter: 'blur(10px)',
+                  borderRadius: '1rem',
+                  border: '1px solid rgba(59, 130, 246, 0.2)',
+                  padding: '1.25rem',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
+                  transition: 'all 0.2s ease-in-out',
                   display: 'flex',
                   gap: '1rem',
+                  position: 'relative',
+                  overflow: 'hidden',
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.boxShadow = '0 6px 16px rgba(0,0,0,0.08)')}
-                onMouseLeave={(e) => (e.currentTarget.style.boxShadow = '0 2px 6px rgba(0,0,0,0.04)')}
+                onMouseEnter={(e) => (e.currentTarget.style.boxShadow = '0 12px 32px rgba(59, 130, 246, 0.15)')}
+                onMouseLeave={(e) => (e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.05)')}
               >
+                {/* Gradient background accent */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '6px',
+                    height: '100%',
+                    background: topicGradients[community.topic] || defaultGradient,
+                  }}
+                />
+
                 {/* Cover Photo - Left-aligned, fixed size */}
                 <div
                   style={{
                     width: '6rem',
                     height: '6rem',
-                    borderRadius: '0.5rem',
+                    borderRadius: '0.75rem',
                     overflow: 'hidden',
                     flexShrink: 0,
+                    border: '1px solid rgba(59, 130, 246, 0.1)',
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)',
+                    position: 'relative',
+                    zIndex: 1,
                   }}
                 >
                   {community.cover_photo_url ? (
@@ -335,7 +388,7 @@ export default function CommunitiesPage() {
                       style={{
                         width: '100%',
                         height: '100%',
-                        background: griefGradients[community.grief_type] || defaultGradient,
+                        background: topicGradients[community.topic] || defaultGradient,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -348,26 +401,26 @@ export default function CommunitiesPage() {
                 </div>
 
                 {/* Content Area */}
-                <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ flex: 1, minWidth: 0, position: 'relative', zIndex: 1 }}>
                   {/* Header Section */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
                     <div style={{ flex: 1, minWidth: 0, marginRight: '1rem' }}>
                       <h2
                         style={{
                           fontWeight: '700',
-                          color: '#1e293b',
-                          fontSize: '1.125rem',
+                          color: '#1e40af',
+                          fontSize: '1.25rem',
                           wordBreak: 'break-word',
                           overflowWrap: 'break-word',
-                          hyphens: 'auto',
                           lineHeight: 1.3,
+                          marginBottom: '0.25rem',
                         }}
                       >
                         {community.name}
                       </h2>
                       <p
                         style={{
-                          color: '#64748b',
+                          color: '#6b7280',
                           fontSize: '0.875rem',
                           display: '-webkit-box',
                           WebkitLineClamp: 2,
@@ -375,6 +428,7 @@ export default function CommunitiesPage() {
                           overflow: 'hidden',
                           wordBreak: 'break-word',
                           overflowWrap: 'break-word',
+                          lineHeight: '1.5',
                         }}
                       >
                         {community.description}
@@ -382,20 +436,30 @@ export default function CommunitiesPage() {
                     </div>
                     <Button
                       style={{
-                        background: '#f59e0b',
+                        background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
                         color: 'white',
                         border: 'none',
-                        padding: '0.375rem 0.75rem',
-                        borderRadius: '0.375rem',
+                        padding: '0.5rem 1rem',
+                        borderRadius: '0.5rem',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '0.25rem',
+                        gap: '0.5rem',
                         fontSize: '0.875rem',
                         fontWeight: '600',
                         whiteSpace: 'nowrap',
                         flexShrink: 0,
                         alignSelf: 'flex-start',
+                        transition: 'all 300ms ease-in-out',
+                        boxShadow: '0 2px 8px rgba(59, 130, 246, 0.2)',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = 'translateY(-2px)';
+                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(59, 130, 246, 0.3)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'translateY(0)';
+                        e.currentTarget.style.boxShadow = '0 2px 8px rgba(59, 130, 246, 0.2)';
                       }}
                     >
                       Visit
@@ -404,18 +468,42 @@ export default function CommunitiesPage() {
                   </div>
 
                   {/* Stats */}
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', fontSize: '0.75rem', color: '#94a3b8', marginBottom: '0.5rem' }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                      <Users size={14} style={{ color: '#94a3b8' }} />
+                  <div style={{ 
+                    display: 'flex', 
+                    flexWrap: 'wrap', 
+                    gap: '1rem', 
+                    fontSize: '0.75rem', 
+                    color: '#6b7280', 
+                    marginBottom: '0.75rem',
+                    fontWeight: '500'
+                  }}>
+                    <span style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '0.375rem',
+                      backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                      padding: '0.25rem 0.75rem',
+                      borderRadius: '9999px',
+                    }}>
+                      <Users size={14} style={{ color: '#3b82f6' }} />
                       {community.member_count === 1 ? '1 member' : `${community.member_count.toLocaleString()} members`}
                     </span>
                   </div>
 
                   {/* Activity */}
-                  <div style={{ display: 'flex', gap: '0.5rem', fontSize: '0.875rem', color: '#334155' }}>
-                    <MessageCircle size={16} style={{ color: '#f59e0b', marginTop: '0.125rem' }} />
-                    <p>
-                      {formatRecentActivity(community.created_at)}: Someone just shared a memory
+                  <div style={{ 
+                    display: 'flex', 
+                    gap: '0.5rem', 
+                    fontSize: '0.875rem', 
+                    color: '#4b5563',
+                    padding: '0.5rem 0.75rem',
+                    backgroundColor: 'rgba(249, 250, 251, 0.8)',
+                    borderRadius: '0.5rem',
+                    border: '1px solid rgba(229, 231, 235, 0.5)',
+                  }}>
+                    <MessageCircle size={16} style={{ color: '#3b82f6', marginTop: '0.125rem' }} />
+                    <p style={{ margin: 0 }}>
+                      {formatRecentActivity(community.created_at)}: Someone just shared their experience
                     </p>
                   </div>
                 </div>
@@ -430,48 +518,63 @@ export default function CommunitiesPage() {
             style={{
               textAlign: 'center',
               padding: '3rem 1rem',
-              background: 'white',
-              borderRadius: '0.75rem',
-              border: '2px dashed #cbd5e1',
+              background: 'rgba(255, 255, 255, 0.95)',
+              backdropFilter: 'blur(10px)',
+              borderRadius: '1rem',
+              border: '2px dashed rgba(59, 130, 246, 0.3)',
               marginBottom: '2rem',
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.05)',
             }}
           >
             <div
               style={{
-                width: '3rem',
-                height: '3rem',
+                width: '3.5rem',
+                height: '3.5rem',
                 borderRadius: '9999px',
-                background: '#fef3c7',
-                color: '#b45309',
+                background: 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)',
+                color: '#1e40af',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 margin: '0 auto 1rem',
+                border: '2px solid #3b82f6',
               }}
             >
               <Users size={24} />
             </div>
-            <h3 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#1e293b', marginBottom: '0.5rem' }}>
+            <h3 style={{ fontSize: '1.5rem', fontWeight: '700', color: '#1e40af', marginBottom: '0.5rem' }}>
               No communities yet
             </h3>
-            <p style={{ color: '#64748b', maxWidth: '28rem', margin: '0 auto 1.5rem' }}>
-              Be the first to create a community for your grief experience. Your story matters, and others are waiting to hear it.
+            <p style={{ color: '#6b7280', maxWidth: '28rem', margin: '0 auto 1.5rem', fontSize: '1rem' }}>
+              Be the first to create a community for your depression experience. Your story matters, and others are waiting to hear it.
             </p>
             <Button
               onClick={handleRequestCommunity}
               style={{
-                background: '#f59e0b',
+                background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
                 color: 'white',
                 border: 'none',
-                padding: '0.5rem 1.25rem',
-                borderRadius: '0.5rem',
+                padding: '0.75rem 1.5rem',
+                borderRadius: '0.75rem',
                 cursor: 'pointer',
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '0.5rem',
+                fontWeight: '600',
+                fontSize: '1rem',
+                transition: 'all 300ms ease-in-out',
+                boxShadow: '0 4px 20px rgba(59, 130, 246, 0.3)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 8px 30px rgba(59, 130, 246, 0.4)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 4px 20px rgba(59, 130, 246, 0.3)';
               }}
             >
-              <Plus size={16} />
+              <Plus size={18} />
               Start Your Community
             </Button>
           </div>
@@ -480,31 +583,51 @@ export default function CommunitiesPage() {
         {/* CTA Footer */}
         <div
           style={{
-            background: 'white',
-            borderRadius: '0.75rem',
-            border: '1px solid #e2e8f0',
-            padding: '1.25rem',
+            background: 'rgba(255, 255, 255, 0.95)',
+            backdropFilter: 'blur(10px)',
+            borderRadius: '1rem',
+            border: '1px solid rgba(59, 130, 246, 0.2)',
+            padding: '1.5rem',
             textAlign: 'center',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.05)',
+            marginBottom: '2rem',
           }}
         >
-          <p style={{ color: '#64748b', marginBottom: '0.75rem' }}>
-            Can&rsquo;t find a community that matches your grief experience?
+          <p style={{ 
+            color: '#4b5563', 
+            marginBottom: '1rem',
+            fontSize: '1.125rem',
+            fontWeight: '500'
+          }}>
+            Can&rsquo;t find a community that matches your depression experience?
           </p>
           <Button
             onClick={handleRequestCommunity}
             style={{
-              background: '#f59e0b',
+              background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
               color: 'white',
               border: 'none',
-              padding: '0.5rem 1.25rem',
-              borderRadius: '0.5rem',
+              padding: '0.75rem 1.5rem',
+              borderRadius: '0.75rem',
               cursor: 'pointer',
               display: 'inline-flex',
               alignItems: 'center',
               gap: '0.5rem',
+              fontWeight: '600',
+              fontSize: '1rem',
+              transition: 'all 300ms ease-in-out',
+              boxShadow: '0 4px 20px rgba(59, 130, 246, 0.3)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-2px)';
+              e.currentTarget.style.boxShadow = '0 8px 30px rgba(59, 130, 246, 0.4)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 4px 20px rgba(59, 130, 246, 0.3)';
             }}
           >
-            <Plus size={16} />
+            <Plus size={18} />
             Start a New Community
           </Button>
         </div>
@@ -512,25 +635,36 @@ export default function CommunitiesPage() {
         {/* Guidelines Footer */}
         <div
           style={{
-            marginTop: '2rem',
             textAlign: 'center',
             fontSize: '0.875rem',
-            color: '#94a3b8',
-            padding: '1rem',
-            background: 'rgba(255,255,255,0.5)',
-            borderRadius: '0.5rem',
+            color: '#6b7280',
+            padding: '1.25rem',
+            background: 'rgba(255, 255, 255, 0.9)',
+            backdropFilter: 'blur(10px)',
+            borderRadius: '0.75rem',
+            border: '1px solid rgba(59, 130, 246, 0.1)',
           }}
         >
           <p>All communities are moderated with care. We honor every story without judgment.</p>
-          <p style={{ fontWeight: '600', marginTop: '0.25rem' }}>Your grief is valid. Your presence matters.</p>
+          <p style={{ fontWeight: '600', marginTop: '0.5rem', color: '#1e40af' }}>
+            Your feelings are valid. Your presence matters.
+          </p>
         </div>
       </div>
 
-      {/* Optional: define animation if not in global CSS */}
+      {/* Global styles for animations */}
       <style jsx>{`
         @keyframes spin {
           to {
             transform: rotate(360deg);
+          }
+        }
+        @keyframes pulse {
+          0%, 100% { 
+            opacity: 1;
+          }
+          50% { 
+            opacity: 0.5;
           }
         }
       `}</style>

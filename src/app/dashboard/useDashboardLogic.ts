@@ -1,5 +1,4 @@
 'use client';
-
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { v4 as uuidv4 } from 'uuid';
@@ -7,41 +6,13 @@ import { createClient } from '@/lib/supabase';
 import { usePresence } from '@/hooks/usePresence';
 import { getPublicImageUrl } from '@/utils/imageUtils';
 
-export type GriefType =
-  | 'parent'
-  | 'child'
-  | 'spouse'
-  | 'sibling'
-  | 'friend'
-  | 'pet'
-  | 'miscarriage'
-  | 'caregiver'
-  | 'suicide'
-  | 'other';
-
-export interface ProfileUpdate {
-  grief_types?: GriefType[];
-  accepts_calls?: boolean;
-  accepts_video_calls?: boolean;
-  accept_from_genders?: ('male' | 'female' | 'nonbinary' | 'any')[];
-  accept_from_countries?: string[];
-  accept_from_languages?: string[];
-  is_anonymous?: boolean;
-  full_name?: string;
-  avatar_url?: string;
-  about?: string;
-   other_loss_description?: string | null; 
-  // Add other writable profile fields as needed
-}
-
 export interface UserProfile {
   id: string;
-  griefTypes: GriefType[];
-   avatarUrl: string | null; 
-  fullName: string;      // Added full name
+  avatarUrl: string | null;
+  fullName: string;
   email?: string;
   about?: string;
-  otherLossDescription: string | null;         // Added email for fallback
+  currentMood?: string;
 }
 
 export interface UserPreferences {
@@ -58,25 +29,24 @@ export interface Post {
   userId: string;
   text: string;
   mediaUrls?: string[];
-  griefTypes: GriefType[];
   createdAt: Date;
   likes: number;
   commentsCount: number;
   isLiked: boolean;
   isAnonymous: boolean;
   user?: {
-    id: string;                    // ✅ added
-    fullName: string | null;       // ✅ allow null
-    avatarUrl: string | null;      // ✅ keep
-    isAnonymous: boolean;          // ✅ added
+    id: string;
+    fullName: string | null;
+    avatarUrl: string | null;
+    isAnonymous: boolean;
   };
 }
+
 export interface DashboardUIProps {
   profile: UserProfile | null;
   preferences: UserPreferences;
-  showGriefSetup: boolean;
+  showMoodSetup: boolean;
   showSettings: boolean;
-  selectedGriefTypes: GriefType[];
   newPostText: string;
   mediaFiles: File[];
   mediaPreviews: string[];
@@ -86,10 +56,8 @@ export interface DashboardUIProps {
   isSubmitting: boolean;
   error: string | null;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
-
   // Callbacks
-  toggleGriefType: (type: GriefType) => void;
-  handleSaveGriefTypes: () => Promise<void>;
+  handleSaveMoodSetup: () => Promise<void>;
   handleFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   removeMedia: (index: number) => void;
   handlePostSubmit: () => Promise<void>;
@@ -98,13 +66,11 @@ export interface DashboardUIProps {
   toggleAnonymity: () => Promise<void>;
   updateFullName: (firstName: string, lastName: string) => Promise<void>;
   updateAvatar: (file: File) => Promise<void>;
-  // New function
   setShowSettings: (show: boolean) => void;
-  setShowGriefSetup: (show: boolean) => void;
+  setShowMoodSetup: (show: boolean) => void;
   setNewPostText: (text: string) => void;
   onConnectClick: () => void;
   onCommunitiesClick: () => void;
-
   aboutText: string;
   setAboutText: (text: string) => void;
   isEditingAbout: boolean;
@@ -112,17 +78,29 @@ export interface DashboardUIProps {
   isExpanded: boolean;
   setIsExpanded: (expanded: boolean) => void;
   saveAbout: () => Promise<void>;
-  otherLossText: string;
-setOtherLossText: (text: string) => void;
+  currentMood: string;
+  setCurrentMood: (mood: string) => void;
 }
 
+export interface ProfileUpdate {
+  current_mood?: string;
+  accepts_calls?: boolean;
+  accepts_video_calls?: boolean;
+  accept_from_genders?: ('male' | 'female' | 'nonbinary' | 'any')[];
+  accept_from_countries?: string[];
+  accept_from_languages?: string[];
+  is_anonymous?: boolean;
+  full_name?: string;
+  avatar_url?: string;
+  about?: string;
+  // Add other writable profile fields as needed
+}
 
 export function useDashboardLogic(): DashboardUIProps {
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-
+  
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [preferences, setPreferences] = useState<UserPreferences>({
     acceptsCalls: true,
@@ -132,35 +110,32 @@ export function useDashboardLogic(): DashboardUIProps {
     acceptFromLanguages: [],
     isAnonymous: false,
   });
-  const [showGriefSetup, setShowGriefSetup] = useState(false);
+  
+  const [showMoodSetup, setShowMoodSetup] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [selectedGriefTypes, setSelectedGriefTypes] = useState<GriefType[]>([]);
   const [newPostText, setNewPostText] = useState('');
   const [mediaFiles, setMediaFiles] = useState<File[]>([]);
   const [mediaPreviews, setMediaPreviews] = useState<string[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
-  const [onlineCount, setOnlineCount] = useState(0); // ✅ always a number
+  const [onlineCount, setOnlineCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   const [aboutText, setAboutText] = useState('');
   const [isEditingAbout, setIsEditingAbout] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [otherLossText, setOtherLossText] = useState(
-  profile?.otherLossDescription ?? ''
-);
+  const [currentMood, setCurrentMood] = useState('');
 
   usePresence(profile?.id ?? null);
+
   useEffect(() => {
     const init = async () => {
       const { data: { session }, error: authError } = await supabase.auth.getSession();
-
       if (authError || !session?.user) {
         router.push('/auth');
         return;
       }
-
+      
       const { data, error: profileError } = await supabase
         .from('profiles')
         .select('*')
@@ -172,20 +147,21 @@ export function useDashboardLogic(): DashboardUIProps {
         router.push('/auth');
         return;
       }
-const avatarUrl = data.avatar_url ? `/api/media/avatars/${data.avatar_url}` : null;
 
-setProfile({
-  id: data.id,
-  griefTypes: data.grief_types || [],
-  avatarUrl,
-  fullName: data.full_name || session.user.email?.split('@')[0] || 'Friend',
-  email: session.user.email || data.email,
-  about: data.about || '',
-  otherLossDescription: data.other_loss_description || '', 
-});
-setOtherLossText(data.other_loss_description ?? '');
-       setAboutText(data.about || '');
-
+      const avatarUrl = data.avatar_url ? `/api/media/avatars/${data.avatar_url}` : null;
+      
+      setProfile({
+        id: data.id,
+        avatarUrl,
+        fullName: data.full_name || session.user.email?.split('@')[0] || 'Friend',
+        email: session.user.email || data.email,
+        about: data.about || '',
+        currentMood: data.current_mood || '',
+      });
+      
+      setCurrentMood(data.current_mood || '');
+      setAboutText(data.about || '');
+      
       setPreferences({
         acceptsCalls: data.accepts_calls ?? true,
         acceptsVideoCalls: data.accepts_video_calls ?? false,
@@ -194,54 +170,55 @@ setOtherLossText(data.other_loss_description ?? '');
         acceptFromLanguages: data.accept_from_languages || [],
         isAnonymous: data.is_anonymous ?? false,
       });
-
-      if ((data.grief_types?.length || 0) === 0) {
-        setShowGriefSetup(true);
+      
+      if (!data.current_mood) {
+        setShowMoodSetup(true);
       }
-
+      
       setIsLoading(false);
     };
-
+    
     init();
-  }, [router, supabase]); // ✅ Add `supabase` here
+  }, [router, supabase]);
 
-  // Add this useEffect — place it after your "loadPosts" useEffect
+  // Online count effect
   useEffect(() => {
     if (isLoading) return;
-
+    
     const fetchOnlineCount = async () => {
       const { count, error } = await supabase
         .from('profiles')
         .select('*', { count: 'exact', head: true })
         .gte('last_seen', new Date(Date.now() - 60_000).toISOString());
-
-      setOnlineCount(error ? 0 : count ?? 0); // ✅ always a number
+        
+      setOnlineCount(error ? 0 : count ?? 0);
     };
-
+    
     fetchOnlineCount();
     const interval = setInterval(fetchOnlineCount, 30_000);
     return () => clearInterval(interval);
   }, [isLoading, supabase]);
 
+  // Posts effect
   useEffect(() => {
     if (!profile || isLoading) return;
-
+    
     const loadPosts = async () => {
       const { data, error } = await supabase
-  .from('posts')
-  .select(`
-    *,
-    comments_count,
-    profiles: user_id (
-      id,
-      full_name,
-      avatar_url,
-      is_anonymous
-    )
-  `)
-  .eq('user_id', profile.id)
-  .order('created_at', { ascending: false })
-  .limit(20);
+        .from('posts')
+        .select(`
+          *,
+          comments_count,
+          profiles: user_id (
+            id,
+            full_name,
+            avatar_url,
+            is_anonymous
+          )
+        `)
+        .eq('user_id', profile.id)
+        .order('created_at', { ascending: false })
+        .limit(20);
 
       if (error) {
         console.error('Failed to fetch your posts:', error);
@@ -249,51 +226,45 @@ setOtherLossText(data.other_loss_description ?? '');
         return;
       }
 
-  const mapped = data.map((p) => {
-  // ✅ Explicitly type media_urls
-  const mediaUrls = (Array.isArray(p.media_urls) ? p.media_urls : []) as string[];
-  const proxiedMediaUrls = mediaUrls.map((path: string) => `/api/media/posts/${path}`);
-
-  const avatarUrl = p.profiles?.is_anonymous 
-    ? null 
-    : p.profiles?.avatar_url || null;
-
-  return {
-    id: p.id,
-    userId: p.user_id,
-    text: p.text,
-    mediaUrls: proxiedMediaUrls, // now safely typed
-    griefTypes: p.grief_types as GriefType[],
-    createdAt: new Date(p.created_at),
-    likes: p.likes_count || 0,
-    commentsCount: p.comments_count || 0,
-    isLiked: false,
-    isAnonymous: p.is_anonymous || p.profiles?.is_anonymous,
-    user: p.profiles ? {
-      id: p.profiles.id,
-      fullName: p.profiles.is_anonymous ? null : p.profiles.full_name,
-      avatarUrl,
-      isAnonymous: p.profiles.is_anonymous ?? false,
-    } : undefined,
-  };
-});
+      const mapped = data.map((p) => {
+        const mediaUrls = (Array.isArray(p.media_urls) ? p.media_urls : []) as string[];
+        const proxiedMediaUrls = mediaUrls.map((path: string) => `/api/media/posts/${path}`);
+        
+        const avatarUrl = p.profiles?.is_anonymous
+          ? null
+          : p.profiles?.avatar_url || null;
+          
+        return {
+          id: p.id,
+          userId: p.user_id,
+          text: p.text,
+          mediaUrls: proxiedMediaUrls,
+          createdAt: new Date(p.created_at),
+          likes: p.likes_count || 0,
+          commentsCount: p.comments_count || 0,
+          isLiked: false,
+          isAnonymous: p.is_anonymous || p.profiles?.is_anonymous,
+          user: p.profiles ? {
+            id: p.profiles.id,
+            fullName: p.profiles.is_anonymous ? null : p.profiles.full_name,
+            avatarUrl,
+            isAnonymous: p.profiles.is_anonymous ?? false,
+          } : undefined,
+        };
+      });
+      
       setPosts(mapped);
     };
-
+    
     loadPosts();
   }, [profile, isLoading, supabase]);
 
+  // Cleanup media previews
   useEffect(() => {
     return () => {
       mediaPreviews.forEach(url => URL.revokeObjectURL(url));
     };
   }, [mediaPreviews]);
-
-  const toggleGriefType = (type: GriefType) => {
-    setSelectedGriefTypes((prev) =>
-      prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
-    );
-  };
 
   const saveProfileToDB = async (updates: ProfileUpdate) => {
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
@@ -301,7 +272,7 @@ setOtherLossText(data.other_loss_description ?? '');
       router.push('/auth');
       return;
     }
-
+    
     const { error } = await supabase
       .from('profiles')
       .upsert({
@@ -310,55 +281,39 @@ setOtherLossText(data.other_loss_description ?? '');
         ...updates,
       })
       .select();
-
+      
     if (error) {
       console.error('Profile save error:', error);
       throw new Error('Failed to save settings.');
     }
   };
 
-  const handleSaveGriefTypes = async () => {
-  if (selectedGriefTypes.length === 0) {
-    setError('Please select at least one type of loss.');
-    return;
-  }
-
-  try {
-    const updates: ProfileUpdate = { grief_types: selectedGriefTypes };
-
-    if (selectedGriefTypes.includes('other')) {
-      updates.other_loss_description = otherLossText.trim() || null;
-    } else {
-      updates.other_loss_description = null;
+  const handleSaveMoodSetup = async () => {
+    if (!currentMood) {
+      setError('Please select how you\'re feeling today.');
+      return;
     }
-
-    await saveProfileToDB(updates);
-
-    // ✅ FIX: Use `otherLossText` from state, NOT `data`
-    setProfile(prev =>
-      prev
-        ? {
-            ...prev,
-            griefTypes: selectedGriefTypes,
-            otherLossDescription: selectedGriefTypes.includes('other') ? otherLossText : null,
-          }
-        : null
-    );
-
-    setShowGriefSetup(false);
-    setError(null);
-  } catch (err) {
-    setError(err instanceof Error ? err.message : 'Failed to save grief types.');
-  }
-};
+    
+    try {
+      await saveProfileToDB({ current_mood: currentMood });
+      
+      setProfile(prev =>
+        prev ? { ...prev, currentMood } : null
+      );
+      
+      setShowMoodSetup(false);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save mood information.');
+    }
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-
+    
     const validFiles = Array.from(files).slice(0, 4 - mediaFiles.length);
     setMediaFiles(prev => [...prev, ...validFiles]);
-
     const newPreviews = validFiles.map(file => URL.createObjectURL(file));
     setMediaPreviews(prev => [...prev, ...newPreviews]);
   };
@@ -373,43 +328,42 @@ setOtherLossText(data.other_loss_description ?? '');
 
   const handlePostSubmit = async () => {
     if (!newPostText.trim() || !profile) return;
+    
     setIsSubmitting(true);
     setError(null);
-
     let mediaUrls: string[] = [];
-
+    
     try {
       if (mediaFiles.length > 0) {
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         if (sessionError || !session?.user) {
           throw new Error('Authentication required');
         }
-
+        
         const uploadPromises = mediaFiles.map(async (file) => {
           const fileExt = file.name.split('.').pop();
           const fileName = `${uuidv4()}.${fileExt}`;
           const filePath = `posts/${session.user.id}/${fileName}`;
-
+          
           const { error: uploadError } = await supabase.storage
             .from('posts')
             .upload(filePath, file, {
               upsert: false,
               contentType: file.type
             });
-
+            
           if (uploadError) throw uploadError;
-
-         return filePath;
+          return filePath;
         });
-
+        
         mediaUrls = await Promise.all(uploadPromises);
       }
-
+      
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       if (sessionError || !session?.user) {
         throw new Error('Authentication required');
       }
-
+      
       const { error: postError } = await supabase
         .from('posts')
         .insert({
@@ -417,59 +371,57 @@ setOtherLossText(data.other_loss_description ?? '');
           user_id: session.user.id,
           text: newPostText.trim(),
           media_urls: mediaUrls.length > 0 ? mediaUrls : null,
-          grief_types: profile.griefTypes,
           is_anonymous: preferences.isAnonymous,
           created_at: new Date().toISOString(),
         });
-
+        
       if (postError) throw postError;
-
-   const { data: newPostData, error: fetchError } = await supabase
-  .from('posts')
-  .select(`
-    *,
-    comments_count,
-    profiles: user_id (
-      id,
-      full_name,
-      avatar_url,
-      is_anonymous
-    )
-  `)
-  .eq('user_id', session.user.id)
-  .order('created_at', { ascending: false })
-  .limit(1)
-  .single();
-
+      
+      const { data: newPostData, error: fetchError } = await supabase
+        .from('posts')
+        .select(`
+          *,
+          comments_count,
+          profiles: user_id (
+            id,
+            full_name,
+            avatar_url,
+            is_anonymous
+          )
+        `)
+        .eq('user_id', session.user.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+        
       if (fetchError) throw fetchError;
-
- const newPost: Post = {
-  id: newPostData.id,
-  userId: newPostData.user_id,
-  text: newPostData.text,
-  mediaUrls: newPostData.media_urls || [], // ← RAW PATHS ONLY
-  griefTypes: newPostData.grief_types as GriefType[],
-  createdAt: new Date(newPostData.created_at),
-  likes: newPostData.likes_count || 0,
-  commentsCount: newPostData.comments_count || 0,
-  isLiked: false,
-  isAnonymous: newPostData.is_anonymous,
-  user: newPostData.profiles ? {
-    id: newPostData.profiles.id,
-    fullName: newPostData.profiles.is_anonymous ? null : newPostData.profiles.full_name,
-    avatarUrl: newPostData.profiles.is_anonymous 
-      ? null 
-      : newPostData.profiles.avatar_url, // ← RAW PATH
-    isAnonymous: newPostData.profiles.is_anonymous ?? false,
-  } : undefined,
-};
+      
+      const newPost: Post = {
+        id: newPostData.id,
+        userId: newPostData.user_id,
+        text: newPostData.text,
+        mediaUrls: newPostData.media_urls || [],
+        createdAt: new Date(newPostData.created_at),
+        likes: newPostData.likes_count || 0,
+        commentsCount: newPostData.comments_count || 0,
+        isLiked: false,
+        isAnonymous: newPostData.is_anonymous,
+        user: newPostData.profiles ? {
+          id: newPostData.profiles.id,
+          fullName: newPostData.profiles.is_anonymous ? null : newPostData.profiles.full_name,
+          avatarUrl: newPostData.profiles.is_anonymous
+            ? null
+            : newPostData.profiles.avatar_url,
+          isAnonymous: newPostData.profiles.is_anonymous ?? false,
+        } : undefined,
+      };
+      
       setPosts(prev => [newPost, ...prev]);
-
       setNewPostText('');
       setMediaFiles([]);
       setMediaPreviews([]);
+      
       if (fileInputRef.current) fileInputRef.current.value = '';
-
     } catch (err) {
       console.error('Post creation failed:', err);
       setError(err instanceof Error ? err.message : 'Failed to share post. Please try again.');
@@ -511,26 +463,16 @@ setOtherLossText(data.other_loss_description ?? '');
     }
   };
 
-  // New function to update full name
   const updateFullName = async (firstName: string, lastName: string) => {
     const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
-
     if (!firstName.trim()) {
       throw new Error('First name is required');
     }
-
+    
     try {
-      // Update in database
       await saveProfileToDB({ full_name: fullName });
-
-      // Update local state
-      setProfile(prev => prev ? {
-        ...prev,
-        fullName
-      } : null);
-
+      setProfile(prev => prev ? { ...prev, fullName } : null);
       setError(null);
-
     } catch (err) {
       console.error('Name update failed:', err);
       throw new Error('Failed to update name. Please try again.');
@@ -539,31 +481,25 @@ setOtherLossText(data.other_loss_description ?? '');
 
   const updateAvatar = async (file: File) => {
     if (!profile) throw new Error('Profile not loaded');
-
+    
     try {
-      // 1. Upload to Supabase Storage
       const fileExt = file.name.split('.').pop();
       const fileName = `${uuidv4()}.${fileExt}`;
-     const filePath = `${profile.id}/${fileName}`;
-
+      const filePath = `${profile.id}/${fileName}`;
+      
       const { error: uploadError } = await supabase.storage
         .from('avatars')
         .upload(filePath, file, {
           upsert: false,
           contentType: file.type,
         });
-
+        
       if (uploadError) throw uploadError;
-
-      // 2. Get public URL
-      // ✅ CORRECT
-      // ✅ Correct
- // Save the RELATIVE path, not the full URL
-await saveProfileToDB({ avatar_url: filePath });
-      // 4. Update local profile state
-     // ✅ Do this: use your proxy route
-const proxyUrl = `/api/media/avatars/${filePath}`;
-setProfile((prev) => (prev ? { ...prev, avatarUrl: proxyUrl } : null));
+      
+      await saveProfileToDB({ avatar_url: filePath });
+      
+      const proxyUrl = `/api/media/avatars/${filePath}`;
+      setProfile((prev) => (prev ? { ...prev, avatarUrl: proxyUrl } : null));
       setError(null);
     } catch (err) {
       console.error('Avatar upload failed:', err);
@@ -572,16 +508,18 @@ setProfile((prev) => (prev ? { ...prev, avatarUrl: proxyUrl } : null));
   };
 
   const saveAbout = async () => {
-  if (!profile) return;
-  try {
-    await saveProfileToDB({ about: aboutText });
-    setProfile(prev => prev ? { ...prev, about: aboutText } : null);
-    setIsEditingAbout(false);
-    setError(null);
-  } catch (err) {
-    setError(err instanceof Error ? err.message : 'Failed to save about.');
-  }
-};
+    if (!profile) return;
+    
+    try {
+      await saveProfileToDB({ about: aboutText });
+      setProfile(prev => prev ? { ...prev, about: aboutText } : null);
+      setIsEditingAbout(false);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save about.');
+    }
+  };
+
   const onConnectClick = () => {
     router.push('/connect');
   };
@@ -589,50 +527,46 @@ setProfile((prev) => (prev ? { ...prev, avatarUrl: proxyUrl } : null));
   const onCommunitiesClick = () => {
     router.push('/communities');
   };
-return {
-  profile,
-  preferences,
-  showGriefSetup,
-  showSettings,
-  selectedGriefTypes,
-  newPostText,
-  mediaFiles,
-  mediaPreviews,
-  posts,
-  onlineCount,
-  isLoading,
-  isSubmitting,
-  error,
-  fileInputRef,
 
-  // About section
-  aboutText,
-  setAboutText,
-  isEditingAbout,
-  setIsEditingAbout,
-  isExpanded,
-  setIsExpanded,
-  saveAbout,
-
-  // 👇 ADD THESE TWO
-  otherLossText,
-  setOtherLossText,
-
-  // Callbacks
-  toggleGriefType,
-  handleSaveGriefTypes,
-  handleFileChange,
-  removeMedia,
-  handlePostSubmit,
-  toggleAcceptsCalls,
-  toggleAcceptsVideoCalls,
-  toggleAnonymity,
-  updateFullName,
-  updateAvatar,
-  setShowSettings,
-  setShowGriefSetup,
-  setNewPostText,
-  onConnectClick,
-  onCommunitiesClick,
-};
+  return {
+    profile,
+    preferences,
+    showMoodSetup,
+    showSettings,
+    newPostText,
+    mediaFiles,
+    mediaPreviews,
+    posts,
+    onlineCount,
+    isLoading,
+    isSubmitting,
+    error,
+    fileInputRef,
+    // About section
+    aboutText,
+    setAboutText,
+    isEditingAbout,
+    setIsEditingAbout,
+    isExpanded,
+    setIsExpanded,
+    saveAbout,
+    // Mood setup
+    currentMood,
+    setCurrentMood,
+    // Callbacks
+    handleSaveMoodSetup,
+    handleFileChange,
+    removeMedia,
+    handlePostSubmit,
+    toggleAcceptsCalls,
+    toggleAcceptsVideoCalls,
+    toggleAnonymity,
+    updateFullName,
+    updateAvatar,
+    setShowSettings,
+    setShowMoodSetup,
+    setNewPostText,
+    onConnectClick,
+    onCommunitiesClick,
+  };
 }

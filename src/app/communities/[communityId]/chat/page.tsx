@@ -741,19 +741,20 @@ export default function CommunityChatPage() {
         {!isOwn && (
           <div style={{ width: '36px', marginRight: '12px', flexShrink: 0, marginTop: repliedMsg ? '24px' : '0' }}>
             {msg.sender.avatar_url ? (
-              <Image
-                src={msg.sender.avatar_url}
-                alt={msg.sender.full_name || 'User'}
-                width={36}
-                height={36}
-                style={{
-                  width: '36px',
-                  height: '36px',
-                  borderRadius: '50%',
-                  objectFit: 'cover',
-                }}
-                unoptimized
-              />
+  <Image
+    src={`/api/media/avatars/${msg.sender.avatar_url}`}
+    alt={msg.sender.full_name || 'User'}
+    width={36}
+    height={36}
+    style={{
+      width: '36px',
+      height: '36px',
+      borderRadius: '50%',
+      objectFit: 'cover',
+    }}
+    unoptimized
+    onError={(e) => (e.currentTarget.style.display = 'none')}
+  />
             ) : (
               <div
                 style={{

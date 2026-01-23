@@ -29,9 +29,9 @@ interface Resource {
   book_quote: string | null;
   external_url: string | null;
   created_at: string;
-  book_cover_url: string | null; // storage path like "book-covers/user-id/123.jpg"
+  book_cover_url: string | null;
   user_id: string;
-  video_url: string | null; // storage path like "videos/user-id/456.mp4"
+  video_url: string | null;
   video_type: 'link' | 'upload';
 }
 
@@ -58,7 +58,7 @@ export default function ResourcesPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState<FilterType>(ALL_TYPES);
 
-  // Filter resources based on search and type (tags removed per request)
+  // Filter resources based on search and type
   const filteredResources = useMemo(() => {
     return resources.filter(resource => {
       if (selectedType !== ALL_TYPES && resource.type !== selectedType) {
@@ -264,16 +264,33 @@ export default function ResourcesPage() {
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: '#f5f5f4', padding: '1.5rem 1rem 3.5rem', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-        <p style={{ color: '#44403c' }}>Loading resources...</p>
+      <div style={{ 
+        minHeight: '100vh', 
+        backgroundColor: '#f0f7ff', 
+        padding: '1.5rem 1rem 3.5rem', 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center' 
+      }}>
+        <p style={{ color: '#1e40af' }}>Loading resources...</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: '#f5f5f4', padding: '1.5rem 2rem' }}>
-        <div style={{ maxWidth: '768px', margin: '0 auto', backgroundColor: '#fee2e2', padding: '1rem', borderRadius: '0.5rem' }}>
+      <div style={{ 
+        minHeight: '100vh', 
+        backgroundColor: '#f0f7ff', 
+        padding: '1.5rem 2rem' 
+      }}>
+        <div style={{ 
+          maxWidth: '768px', 
+          margin: '0 auto', 
+          backgroundColor: '#fee2e2', 
+          padding: '1rem', 
+          borderRadius: '0.5rem' 
+        }}>
           <p style={{ color: '#b91c1c' }}>{error}</p>
         </div>
       </div>
@@ -281,16 +298,21 @@ export default function ResourcesPage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#f5f5f4', padding: '1.5rem 1rem 3.5rem' }}>
+    <div style={{ 
+      minHeight: '100vh', 
+      backgroundColor: '#f0f7ff', 
+      padding: '1.5rem 1rem 3.5rem' 
+    }}>
       <div style={{ maxWidth: '768px', margin: '0 auto' }}>
+        {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
           <div
             style={{
               width: '2.75rem',
               height: '2.75rem',
               borderRadius: '9999px',
-              backgroundColor: '#fef3c7',
-              color: '#92400e',
+              backgroundColor: '#dbeafe',
+              color: '#1e40af',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -299,10 +321,17 @@ export default function ResourcesPage() {
           >
             <BookOpen size={18} />
           </div>
-          <h1 style={{ fontSize: '1.875rem', fontWeight: '700', color: '#1c1917' }}>
+          <h1 style={{ 
+            fontSize: '1.875rem', 
+            fontWeight: '700', 
+            color: '#1e40af',
+            background: 'linear-gradient(135deg, #1e40af 0%, #3b82f6 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent'
+          }}>
             Grief Resources
           </h1>
-          <p style={{ color: '#44403c', marginTop: '0.5rem' }}>
+          <p style={{ color: '#4b5563', marginTop: '0.5rem' }}>
             Shared wisdom and tools from people who understand grief
           </p>
         </div>
@@ -317,7 +346,7 @@ export default function ResourcesPage() {
                 left: '0.75rem', 
                 top: '50%', 
                 transform: 'translateY(-50%)', 
-                color: '#9ca3af' 
+                color: '#6b7280' 
               }} 
             />
             <input
@@ -328,13 +357,14 @@ export default function ResourcesPage() {
               style={{
                 width: '100%',
                 padding: '0.625rem 0.75rem 0.625rem 2.5rem',
-                borderRadius: '0.5rem',
+                borderRadius: '0.75rem',
                 border: '1px solid #d1d5db',
                 backgroundColor: 'white',
                 fontSize: '0.875rem',
                 color: '#374151',
                 outline: 'none',
                 transition: 'all 150ms ease-in-out',
+                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)',
               }}
             />
           </div>
@@ -343,22 +373,25 @@ export default function ResourcesPage() {
         {/* Category Filters */}
         <div style={{ marginBottom: '1.5rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-            <Filter size={16} style={{ color: '#92400e' }} />
-            <span style={{ fontSize: '0.875rem', fontWeight: '600', color: '#92400e' }}>Filter by Type</span>
+            <Filter size={16} style={{ color: '#1e40af' }} />
+            <span style={{ fontSize: '0.875rem', fontWeight: '600', color: '#1e40af' }}>
+              Filter by Type
+            </span>
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }}>
             <button
               onClick={() => setSelectedType(ALL_TYPES)}
               style={{
-                padding: '0.375rem 0.75rem',
+                padding: '0.5rem 1rem',
                 borderRadius: '9999px',
-                border: selectedType === ALL_TYPES ? '2px solid #f59e0b' : '1px solid #d1d5db',
-                backgroundColor: selectedType === ALL_TYPES ? '#fef3c7' : 'white',
-                color: selectedType === ALL_TYPES ? '#92400e' : '#4b5563',
+                border: selectedType === ALL_TYPES ? '2px solid #3b82f6' : '1px solid #d1d5db',
+                backgroundColor: selectedType === ALL_TYPES ? '#dbeafe' : 'white',
+                color: selectedType === ALL_TYPES ? '#1e40af' : '#4b5563',
                 fontSize: '0.875rem',
                 fontWeight: selectedType === ALL_TYPES ? '600' : '400',
                 cursor: 'pointer',
                 transition: 'all 150ms ease-in-out',
+                boxShadow: selectedType === ALL_TYPES ? '0 2px 8px rgba(59, 130, 246, 0.2)' : 'none',
               }}
             >
               All Resources ({resources.length})
@@ -370,15 +403,16 @@ export default function ResourcesPage() {
                   key={type}
                   onClick={() => setSelectedType(type as ResourceType)}
                   style={{
-                    padding: '0.375rem 0.75rem',
+                    padding: '0.5rem 1rem',
                     borderRadius: '9999px',
-                    border: selectedType === type ? '2px solid #f59e0b' : '1px solid #d1d5db',
-                    backgroundColor: selectedType === type ? '#fef3c7' : 'white',
-                    color: selectedType === type ? '#92400e' : '#4b5563',
+                    border: selectedType === type ? '2px solid #3b82f6' : '1px solid #d1d5db',
+                    backgroundColor: selectedType === type ? '#dbeafe' : 'white',
+                    color: selectedType === type ? '#1e40af' : '#4b5563',
                     fontSize: '0.875rem',
                     fontWeight: selectedType === type ? '600' : '400',
                     cursor: 'pointer',
                     transition: 'all 150ms ease-in-out',
+                    boxShadow: selectedType === type ? '0 2px 8px rgba(59, 130, 246, 0.2)' : 'none',
                   }}
                 >
                   {label} ({count})
@@ -388,8 +422,17 @@ export default function ResourcesPage() {
           </div>
 
           {(searchQuery || selectedType !== ALL_TYPES) && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '1rem' }}>
-              <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'space-between', 
+              marginTop: '1rem',
+              padding: '0.75rem',
+              backgroundColor: 'rgba(59, 130, 246, 0.05)',
+              borderRadius: '0.5rem',
+              border: '1px solid rgba(59, 130, 246, 0.1)'
+            }}>
+              <span style={{ fontSize: '0.875rem', color: '#1e40af' }}>
                 Showing {filteredResources.length} of {resources.length} resources
                 {searchQuery && ` for "${searchQuery}"`}
                 {selectedType !== ALL_TYPES && ` in ${CATEGORIES[selectedType as ResourceType]}`}
@@ -397,14 +440,23 @@ export default function ResourcesPage() {
               <button
                 onClick={clearFilters}
                 style={{
-                  padding: '0.25rem 0.75rem',
+                  padding: '0.375rem 0.75rem',
                   borderRadius: '0.375rem',
-                  border: '1px solid #d1d5db',
+                  border: '1px solid #3b82f6',
                   backgroundColor: 'white',
-                  color: '#6b7280',
+                  color: '#3b82f6',
                   fontSize: '0.875rem',
+                  fontWeight: '500',
                   cursor: 'pointer',
                   transition: 'all 150ms ease-in-out',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#3b82f6';
+                  e.currentTarget.style.color = 'white';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'white';
+                  e.currentTarget.style.color = '#3b82f6';
                 }}
               >
                 Clear filters
@@ -414,22 +466,38 @@ export default function ResourcesPage() {
         </div>
 
         {filteredResources.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '2rem', backgroundColor: 'white', borderRadius: '0.75rem', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-            <p style={{ color: '#6b7280', marginBottom: '0.5rem' }}>
+          <div style={{ 
+            textAlign: 'center', 
+            padding: '3rem', 
+            backgroundColor: 'white', 
+            borderRadius: '1rem', 
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.05)',
+            border: '1px solid rgba(59, 130, 246, 0.1)'
+          }}>
+            <p style={{ color: '#6b7280', marginBottom: '1rem', fontSize: '1.125rem' }}>
               No resources found{searchQuery ? ` for "${searchQuery}"` : ''}.
             </p>
             {(searchQuery || selectedType !== ALL_TYPES) && (
               <button
                 onClick={clearFilters}
                 style={{
-                  padding: '0.375rem 0.75rem',
-                  borderRadius: '0.375rem',
-                  border: '1px solid #d1d5db',
+                  padding: '0.5rem 1rem',
+                  borderRadius: '0.5rem',
+                  border: '1px solid #3b82f6',
                   backgroundColor: 'white',
-                  color: '#6b7280',
+                  color: '#3b82f6',
                   fontSize: '0.875rem',
+                  fontWeight: '500',
                   cursor: 'pointer',
                   transition: 'all 150ms ease-in-out',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#3b82f6';
+                  e.currentTarget.style.color = 'white';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'white';
+                  e.currentTarget.style.color = '#3b82f6';
                 }}
               >
                 Clear filters to show all resources
@@ -445,7 +513,6 @@ export default function ResourcesPage() {
                 unhelpful: 0,
               };
 
-              // ✅ Convert storage paths to proxied URLs
               const bookCoverSrc = resource.book_cover_url 
                 ? `/api/media/${resource.book_cover_url}`
                 : null;
@@ -459,33 +526,50 @@ export default function ResourcesPage() {
                   key={resource.id}
                   style={{
                     backgroundColor: 'white',
-                    borderRadius: '0.75rem',
-                    padding: '1.25rem',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-                    borderLeft: '4px solid #f59e0b',
+                    borderRadius: '1rem',
+                    padding: '1.5rem',
+                    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.05)',
+                    border: '1px solid rgba(59, 130, 246, 0.1)',
+                    borderLeft: '4px solid #3b82f6',
+                    transition: 'transform 150ms ease-in-out, box-shadow 150ms ease-in-out',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                    e.currentTarget.style.boxShadow = '0 8px 30px rgba(59, 130, 246, 0.15)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 4px 20px rgba(0, 0, 0, 0.05)';
                   }}
                 >
-                  <div style={{ display: 'inline-block', marginBottom: '0.5rem' }}>
+                  <div style={{ display: 'inline-block', marginBottom: '0.75rem' }}>
                     <span
                       style={{
                         fontSize: '0.75rem',
                         fontWeight: '600',
-                        backgroundColor: '#fef3c7',
-                        color: '#92400e',
-                        padding: '0.25rem 0.5rem',
+                        backgroundColor: '#dbeafe',
+                        color: '#1e40af',
+                        padding: '0.375rem 0.75rem',
                         borderRadius: '9999px',
+                        boxShadow: '0 1px 3px rgba(59, 130, 246, 0.1)',
                       }}
                     >
                       {CATEGORIES[resource.type]}
                     </span>
                   </div>
 
-                  <h2 style={{ fontSize: '1.25rem', fontWeight: '700', color: '#1c1917', marginBottom: '0.5rem' }}>
+                  <h2 style={{ 
+                    fontSize: '1.25rem', 
+                    fontWeight: '700', 
+                    color: '#1e40af', 
+                    marginBottom: '0.75rem',
+                    lineHeight: '1.4'
+                  }}>
                     {resource.title}
                   </h2>
 
                   {resource.type === 'Book' && (
-                    <div style={{ marginBottom: '0.75rem' }}>
+                    <div style={{ marginBottom: '1rem' }}>
                       {bookCoverSrc && (
                         <div
                           style={{
@@ -493,9 +577,10 @@ export default function ResourcesPage() {
                             height: '260px',
                             marginBottom: '0.75rem',
                             overflow: 'hidden',
-                            borderRadius: '0.25rem',
+                            borderRadius: '0.5rem',
                             border: '1px solid #e5e7eb',
                             position: 'relative',
+                            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
                           }}
                         >
                           <Image
@@ -503,51 +588,89 @@ export default function ResourcesPage() {
                             alt={`Cover for ${resource.title}`}
                             fill
                             style={{ objectFit: 'cover' }}
-                            unoptimized // Required for dynamic/proxied URLs
+                            unoptimized
                           />
                         </div>
                       )}
                       {resource.book_author && (
-                        <p style={{ color: '#6b7280', fontStyle: 'italic', marginBottom: '0.25rem' }}>
+                        <p style={{ 
+                          color: '#4b5563', 
+                          fontStyle: 'italic', 
+                          marginBottom: '0.5rem',
+                          fontSize: '0.95rem'
+                        }}>
                           by {resource.book_author}
                         </p>
                       )}
                       {resource.book_quote && (
-                        <p style={{ color: '#374151', fontStyle: 'normal', margin: 0 }}>
-                          {`"${resource.book_quote}"`}
-                        </p>
+                      <p style={{ 
+  color: '#374151', 
+  fontStyle: 'normal', 
+  margin: 0,
+  padding: '0.75rem',
+  backgroundColor: '#f8fafc',
+  borderRadius: '0.5rem',
+  borderLeft: '3px solid #3b82f6'
+}}>
+  &ldquo;{resource.book_quote}&rdquo;
+</p>
                       )}
                     </div>
                   )}
 
                   {resource.type !== 'Book' && resource.excerpt && (
-                    <p style={{ color: '#374151', marginBottom: '1rem' }}>
+                    <p style={{ 
+                      color: '#4b5563', 
+                      marginBottom: '1rem',
+                      lineHeight: '1.6'
+                    }}>
                       {resource.excerpt}
                     </p>
                   )}
 
                   {resource.community_source && (
-                    <p style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '1rem' }}>
+                    <p style={{ 
+                      fontSize: '0.875rem', 
+                      color: '#6b7280', 
+                      marginBottom: '1rem',
+                      padding: '0.5rem 0.75rem',
+                      backgroundColor: '#f8fafc',
+                      borderRadius: '0.375rem',
+                      display: 'inline-block'
+                    }}>
                       Shared in: <strong>{resource.community_source}</strong>
                     </p>
                   )}
 
                   {resource.content_warnings.length > 0 && (
                     <div style={{ marginBottom: '1rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginBottom: '0.25rem' }}>
-                        <AlertTriangle size={14} style={{ color: '#7e22ce' }} />
-                        <span style={{ fontSize: '0.875rem', fontWeight: '600', color: '#7e22ce' }}>Content Warnings</span>
+                      <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '0.375rem', 
+                        marginBottom: '0.5rem' 
+                      }}>
+                        <AlertTriangle size={14} style={{ color: '#8b5cf6' }} />
+                        <span style={{ 
+                          fontSize: '0.875rem', 
+                          fontWeight: '600', 
+                          color: '#8b5cf6' 
+                        }}>
+                          Content Warnings
+                        </span>
                       </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem' }}>
                         {resource.content_warnings.map((warning) => (
                           <span
                             key={warning}
                             style={{
-                              padding: '0.125rem 0.5rem',
-                              backgroundColor: '#f3e8ff',
-                              color: '#7e22ce',
+                              padding: '0.25rem 0.75rem',
+                              backgroundColor: '#ede9fe',
+                              color: '#7c3aed',
                               borderRadius: '9999px',
                               fontSize: '0.75rem',
+                              fontWeight: '500',
+                              border: '1px solid rgba(139, 92, 246, 0.2)',
                             }}
                           >
                             {warning}
@@ -566,13 +689,21 @@ export default function ResourcesPage() {
                           style={{
                             width: '100%',
                             maxHeight: '300px',
-                            borderRadius: '0.25rem',
+                            borderRadius: '0.75rem',
                             border: '1px solid #e5e7eb',
+                            backgroundColor: '#000',
                           }}
                         />
                       ) : resource.video_type === 'link' && resource.external_url ? (
                         getYouTubeEmbedUrl(resource.external_url) ? (
-                          <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0, overflow: 'hidden', borderRadius: '0.25rem' }}>
+                          <div style={{ 
+                            position: 'relative', 
+                            paddingBottom: '56.25%', 
+                            height: 0, 
+                            overflow: 'hidden', 
+                            borderRadius: '0.75rem',
+                            border: '1px solid #e5e7eb'
+                          }}>
                             <iframe
                               src={getYouTubeEmbedUrl(resource.external_url)!}
                               title={resource.title}
@@ -596,10 +727,23 @@ export default function ResourcesPage() {
                             style={{
                               display: 'inline-flex',
                               alignItems: 'center',
-                              gap: '0.25rem',
-                              color: '#d97706',
+                              gap: '0.5rem',
+                              color: '#1e40af',
                               fontWeight: '600',
                               textDecoration: 'none',
+                              padding: '0.5rem 1rem',
+                              backgroundColor: '#dbeafe',
+                              borderRadius: '0.5rem',
+                              border: '1px solid rgba(59, 130, 246, 0.3)',
+                              transition: 'all 150ms ease-in-out',
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = '#3b82f6';
+                              e.currentTarget.style.color = 'white';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = '#dbeafe';
+                              e.currentTarget.style.color = '#1e40af';
                             }}
                           >
                             Watch Video <ExternalLink size={14} />
@@ -622,10 +766,23 @@ export default function ResourcesPage() {
                         style={{
                           display: 'inline-flex',
                           alignItems: 'center',
-                          gap: '0.25rem',
-                          color: '#d97706',
+                          gap: '0.5rem',
+                          color: '#1e40af',
                           fontWeight: '600',
                           textDecoration: 'none',
+                          padding: '0.5rem 1rem',
+                          backgroundColor: '#dbeafe',
+                          borderRadius: '0.5rem',
+                          border: '1px solid rgba(59, 130, 246, 0.3)',
+                          transition: 'all 150ms ease-in-out',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = '#3b82f6';
+                          e.currentTarget.style.color = 'white';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = '#dbeafe';
+                          e.currentTarget.style.color = '#1e40af';
                         }}
                       >
                         View Resource <ExternalLink size={14} />
@@ -634,42 +791,77 @@ export default function ResourcesPage() {
                   )}
 
                   {/* Voting Controls */}
-                  <div style={{ marginTop: '1rem', display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                  <div style={{ 
+                    marginTop: '1.5rem', 
+                    display: 'flex', 
+                    gap: '0.75rem', 
+                    alignItems: 'center',
+                    paddingTop: '1rem',
+                    borderTop: '1px solid #e5e7eb'
+                  }}>
                     <button
                       onClick={() => handleVote(resource.id, 'helpful')}
                       style={{
-                        background: 'none',
-                        border: '1px solid #d1d5db',
+                        background: currentVote === 'helpful' ? '#dcfce7' : 'white',
+                        border: currentVote === 'helpful' ? '2px solid #16a34a' : '1px solid #d1d5db',
                         borderRadius: '9999px',
-                        padding: '0.25rem 0.75rem',
+                        padding: '0.5rem 1rem',
                         fontSize: '0.875rem',
-                        color: currentVote === 'helpful' ? '#16a34a' : '#4b5563',
+                        color: currentVote === 'helpful' ? '#166534' : '#4b5563',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '0.25rem',
-                        fontWeight: currentVote === 'helpful' ? 'bold' : 'normal',
+                        gap: '0.5rem',
+                        fontWeight: currentVote === 'helpful' ? '600' : '400',
+                        transition: 'all 150ms ease-in-out',
+                        boxShadow: currentVote === 'helpful' ? '0 2px 8px rgba(22, 163, 74, 0.2)' : 'none',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (currentVote !== 'helpful') {
+                          e.currentTarget.style.backgroundColor = '#f0f9ff';
+                          e.currentTarget.style.borderColor = '#3b82f6';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (currentVote !== 'helpful') {
+                          e.currentTarget.style.backgroundColor = 'white';
+                          e.currentTarget.style.borderColor = '#d1d5db';
+                        }
                       }}
                     >
-                      👍 Helpful ({counts.helpful})
+                      <span style={{ fontSize: '1rem' }}>👍</span> Helpful ({counts.helpful})
                     </button>
                     <button
                       onClick={() => handleVote(resource.id, 'unhelpful')}
                       style={{
-                        background: 'none',
-                        border: '1px solid #d1d5db',
+                        background: currentVote === 'unhelpful' ? '#fee2e2' : 'white',
+                        border: currentVote === 'unhelpful' ? '2px solid #dc2626' : '1px solid #d1d5db',
                         borderRadius: '9999px',
-                        padding: '0.25rem 0.75rem',
+                        padding: '0.5rem 1rem',
                         fontSize: '0.875rem',
-                        color: currentVote === 'unhelpful' ? '#dc2626' : '#4b5563',
+                        color: currentVote === 'unhelpful' ? '#991b1b' : '#4b5563',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '0.25rem',
-                        fontWeight: currentVote === 'unhelpful' ? 'bold' : 'normal',
+                        gap: '0.5rem',
+                        fontWeight: currentVote === 'unhelpful' ? '600' : '400',
+                        transition: 'all 150ms ease-in-out',
+                        boxShadow: currentVote === 'unhelpful' ? '0 2px 8px rgba(220, 38, 38, 0.2)' : 'none',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (currentVote !== 'unhelpful') {
+                          e.currentTarget.style.backgroundColor = '#f0f9ff';
+                          e.currentTarget.style.borderColor = '#3b82f6';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (currentVote !== 'unhelpful') {
+                          e.currentTarget.style.backgroundColor = 'white';
+                          e.currentTarget.style.borderColor = '#d1d5db';
+                        }
                       }}
                     >
-                      👎 Not Helpful ({counts.unhelpful})
+                      <span style={{ fontSize: '1rem' }}>👎</span> Not Helpful ({counts.unhelpful})
                     </button>
                   </div>
                 </div>
@@ -678,19 +870,37 @@ export default function ResourcesPage() {
           </div>
         )}
 
-        <div style={{ marginTop: '2rem', textAlign: 'center' }}>
+        {/* Submit Resource Button */}
+        <div style={{ marginTop: '3rem', textAlign: 'center' }}>
           <Link
             href="/submit-resource"
             style={{
-              display: 'inline-block',
-              padding: '0.5rem 1rem',
-              backgroundColor: '#f59e0b',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.5rem',
+              padding: '0.75rem 2rem',
+              background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
               color: 'white',
-              borderRadius: '0.5rem',
+              borderRadius: '0.75rem',
               fontWeight: '600',
               textDecoration: 'none',
+              fontSize: '1rem',
+              border: 'none',
+              cursor: 'pointer',
+              boxShadow: '0 4px 20px rgba(59, 130, 246, 0.3)',
+              transition: 'all 300ms ease-in-out',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-2px)';
+              e.currentTarget.style.boxShadow = '0 8px 30px rgba(59, 130, 246, 0.4)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 4px 20px rgba(59, 130, 246, 0.3)';
             }}
           >
+            <BookOpen size={18} />
             Share Your Own Resource
           </Link>
         </div>

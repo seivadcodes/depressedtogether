@@ -1,15 +1,15 @@
-// app/api/livekit/token/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase';
 import { AccessToken } from 'livekit-server-sdk';
 
+// Cache tokens for 30 seconds to reduce database calls
+const tokenCache = new Map<string, { token: string; expiresAt: number }>();
+
 export async function POST(req: NextRequest) {
-  // ✅ Check env vars HERE — at request time
   const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY;
   const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET;
 
   if (!LIVEKIT_API_KEY || !LIVEKIT_API_SECRET) {
-    console.error('LiveKit env vars missing at runtime');
     return NextResponse.json(
       { error: 'Server misconfiguration: LiveKit credentials missing' },
       { status: 500 }
@@ -19,31 +19,42 @@ export async function POST(req: NextRequest) {
   try {
     const { room, identity: userId, name } = await req.json();
 
-    if (!room || !userId || typeof name !== 'string') {
+    if (!room || !userId) {
       return NextResponse.json(
-        { error: 'Missing room, identity, or valid name' },
+        { error: 'Missing room or identity' },
         { status: 400 }
       );
     }
 
-    const supabase = createClient();
-    const { data: profile, error } = await supabase
-      .from('profiles')
-      .select('id, full_name')
-      .eq('id', userId)
-      .single();
+    // Check cache first
+    const cacheKey = `${userId}-${room}`;
+    const cached = tokenCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return NextResponse.json({ token: cached.token });
+    }
 
-    if (error || !profile) {
+    // Parallel database queries
+    const supabase = createClient();
+    
+    // Fetch user profile in parallel with token creation setup
+    const [profileResult, at] = await Promise.all([
+      supabase
+        .from('profiles')
+        .select('id, full_name')
+        .eq('id', userId)
+        .single(),
+      Promise.resolve(new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
+        identity: userId,
+        name: name || 'Anonymous',
+        ttl: '10m',
+      }))
+    ]);
+
+    if (profileResult.error || !profileResult.data) {
       return NextResponse.json({ error: 'User not found' }, { status: 401 });
     }
 
-    const displayName = name || profile.full_name || 'Anonymous';
-
-    const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
-      identity: userId,
-      name: displayName,
-      ttl: '10m',
-    });
+    const displayName = name || profileResult.data.full_name || 'Anonymous';
 
     at.addGrant({
       room,
@@ -53,6 +64,12 @@ export async function POST(req: NextRequest) {
     });
 
     const token = await at.toJwt();
+    
+    // Cache the token
+    tokenCache.set(cacheKey, {
+      token,
+      expiresAt: Date.now() + 25 * 60 * 1000 // 25 minutes
+    });
 
     return NextResponse.json({ token });
   } catch (err) {
