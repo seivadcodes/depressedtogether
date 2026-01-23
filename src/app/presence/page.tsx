@@ -3,14 +3,12 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase';
-import { GriefType } from '../dashboard/useDashboardLogic';
 import Image from 'next/image';
 
 interface OnlineUser {
   id: string;
   full_name: string | null;
   avatar_url: string | null;
-  grief_types: GriefType[] | null;
   last_seen: string;
   is_online: boolean;
 }
@@ -50,10 +48,8 @@ export default function PresencePage() {
   }, [pollingSpeed]);
 
   const fetchOnlineUsers = useCallback(async (forceUpdate: boolean = false) => {
-    // Skip if page is not active or component unmounted
     if (!isPageActive || !isMountedRef.current) return;
 
-    // Skip if not enough time has passed since last update (unless forced)
     const timeSinceLastUpdate = Date.now() - lastUpdateRef.current;
     if (!forceUpdate && timeSinceLastUpdate < (pollingSpeed === 'fast' ? 3000 : 15000)) {
       return;
@@ -66,7 +62,7 @@ export default function PresencePage() {
 
       const { data, error: fetchError } = await supabase
         .from('profiles')
-        .select('id, full_name, avatar_url, grief_types, last_seen')
+        .select('id, full_name, avatar_url, last_seen')
         .gte('last_seen', cutoff)
         .order('last_seen', { ascending: false });
 
@@ -77,12 +73,10 @@ export default function PresencePage() {
         is_online: new Date(user.last_seen) > new Date(Date.now() - POLLING_CONFIG.OFFLINE_THRESHOLD),
       }));
 
-      // Only update state if data actually changed
       setOnlineUsers(prev => {
         const prevIds = new Set(prev.map(u => u.id));
         const newIds = new Set(enriched.map(u => u.id));
         
-        // Check if any user status changed or list changed
         if (prev.length !== enriched.length || 
             ![...prevIds].every(id => newIds.has(id)) ||
             prev.some((user, index) => 
@@ -96,9 +90,8 @@ export default function PresencePage() {
 
       lastUpdateRef.current = Date.now();
       setLastUpdated(new Date());
-      retryCountRef.current = 0; // Reset retry count on success
-      
-      // If we have activity, stay in fast mode for a while
+      retryCountRef.current = 0;
+
       if (pollingSpeed === 'fast') {
         setTimeout(() => {
           if (Date.now() - lastActivityRef.current > POLLING_CONFIG.IDLE_TIMEOUT) {
@@ -111,7 +104,6 @@ export default function PresencePage() {
     } catch (err) {
       console.error('Failed to fetch online users:', err);
       
-      // Exponential backoff for retries
       retryCountRef.current++;
       const backoffDelay = Math.min(1000 * Math.pow(2, retryCountRef.current), 30000);
       
@@ -146,7 +138,6 @@ export default function PresencePage() {
     };
 
     if (isPageActive) {
-      // Initial fetch
       fetchOnlineUsers(true);
       setupPolling();
     }
@@ -158,14 +149,13 @@ export default function PresencePage() {
     };
   }, [pollingSpeed, isPageActive, fetchOnlineUsers]);
 
-  // Track page visibility for smart polling
+  // Track page visibility
   useEffect(() => {
     const handleVisibilityChange = () => {
       const isVisible = !document.hidden;
       setIsPageActive(isVisible);
       
       if (isVisible) {
-        // Page became visible - refresh data and use fast polling
         updateActivity();
         fetchOnlineUsers(true);
       } else {
@@ -177,11 +167,10 @@ export default function PresencePage() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [fetchOnlineUsers, updateActivity]);
 
-  // Track user activity on the page
+  // Track user activity
   useEffect(() => {
     const handleUserActivity = () => updateActivity();
 
-    // Add event listeners for user activity
     const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
     events.forEach(event => {
       window.addEventListener(event, handleUserActivity, { passive: true });
@@ -209,7 +198,6 @@ export default function PresencePage() {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  // Manual refresh function
   const handleManualRefresh = useCallback(() => {
     updateActivity();
     fetchOnlineUsers(true);
@@ -219,7 +207,7 @@ export default function PresencePage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="text-center">
-          <p className="text-gray-600 mb-2">Checking who iss online...</p>
+          <p className="text-gray-600 mb-2">Checking who is online...</p>
           <div className="w-8 h-8 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin mx-auto"></div>
         </div>
       </div>
@@ -304,23 +292,6 @@ export default function PresencePage() {
                     <h2 className="text-lg font-semibold text-gray-900 truncate">
                       {user.full_name || 'Anonymous'}
                     </h2>
-                    {user.grief_types && user.grief_types.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {user.grief_types.slice(0, 3).map((type) => (
-                          <span
-                            key={type}
-                            className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800"
-                          >
-                            {type}
-                          </span>
-                        ))}
-                        {user.grief_types.length > 3 && (
-                          <span className="text-xs text-gray-500">
-                            +{user.grief_types.length - 3}
-                          </span>
-                        )}
-                      </div>
-                    )}
                     <p className="text-sm text-gray-500 mt-1">
                       {user.is_online ? (
                         <span className="flex items-center gap-1">
