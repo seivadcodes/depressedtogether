@@ -1398,25 +1398,22 @@ export default function CommunityDetailPage() {
             </div>
           </div>
 
-          {/* Create Post */}
-          {isMember && (
-            <div ref={composerRef} style={{ marginBottom: spacing.lg }}>
-              <PostComposer
-                onSubmit={async (text: string, mediaFiles: File[]) => {
-                  if (!user) return;
-                  const newPost = await createPostWithMedia(text, mediaFiles, user.id);
-                  setPosts((prev) => [newPost, ...prev]);
-                  toast.success('Shared with the community!');
-                }}
-                isSubmitting={uploadingMedia}
-                placeholder={`What’s on your mind, ${authUsername}? You’re not alone...`}
-                avatarUrl={user?.user_metadata?.avatar_url || null}
-                displayName={authUsername}
-                maxFiles={4}
-              />
-            </div>
-          )}
-
+         {/* Create Post */}
+{isMember && (
+  <div ref={composerRef} style={{ marginBottom: spacing.lg }}>
+    <PostComposer
+      onSubmit={async (text: string, mediaFiles: File[]) => {
+        if (!user) return;
+        const newPost = await createPostWithMedia(text, mediaFiles, user.id);
+        setPosts((prev) => [newPost, ...prev]);
+        toast.success('Shared with the community!');
+      }}
+      isSubmitting={uploadingMedia}
+      placeholder={`What’s on your mind, ${authUsername}? You’re not alone...`}
+      maxFiles={4}
+    />
+  </div>
+)}
           {/* Posts */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: spacing['2xl'] }}>
             {posts.length === 0 ? (

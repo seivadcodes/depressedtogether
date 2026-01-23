@@ -24,7 +24,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { CommentsSection } from '@/components/CommentsSection';
 import { PostCard } from '@/components/PostCard';
-
+import { PostComposer } from '@/components/PostComposer';
 // =============== Base Styles ===============
 const baseStyles = {
   container: {
@@ -200,18 +200,13 @@ export function DashboardUI({
 
         <CommunityPresence onlineCount={onlineCount} />
 
-        <NewPostForm
-          profile={profile}
-          mediaFiles={mediaFiles}
-          newPostText={newPostText}
-          mediaPreviews={mediaPreviews}
-          isSubmitting={isSubmitting}
-          fileInputRef={fileInputRef}
-          setNewPostText={setNewPostText}
-          handleFileChange={handleFileChange}
-          removeMedia={removeMedia}
-          handlePostSubmit={handlePostSubmit}
-        />
+        <PostComposer
+  onSubmit={handlePostSubmit}
+  isSubmitting={isSubmitting}
+  placeholder="What's on your mind today? It's safe to share here..."
+  maxFiles={4}
+  defaultIsAnonymous={preferences.isAnonymous}
+/>
 
         <PostsSection
           posts={posts}

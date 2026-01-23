@@ -1,10 +1,10 @@
 'use client';
+
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { v4 as uuidv4 } from 'uuid';
-import { createClient } from '@/lib/supabase';
+import { createClient } from '@/lib/supabase/client';
 import { usePresence } from '@/hooks/usePresence';
-import { getPublicImageUrl } from '@/utils/imageUtils';
 
 export interface UserProfile {
   id: string;
@@ -42,6 +42,7 @@ export interface Post {
   };
 }
 
+// ✅ Updated signature: matches PostComposer's onSubmit
 export interface DashboardUIProps {
   profile: UserProfile | null;
   preferences: UserPreferences;
@@ -60,7 +61,8 @@ export interface DashboardUIProps {
   handleSaveMoodSetup: () => Promise<void>;
   handleFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   removeMedia: (index: number) => void;
-  handlePostSubmit: () => Promise<void>;
+  // ✅ Updated type
+  handlePostSubmit: (text: string, mediaFiles: File[], isAnonymous: boolean) => Promise<void>;
   toggleAcceptsCalls: () => Promise<void>;
   toggleAcceptsVideoCalls: () => Promise<void>;
   toggleAnonymity: () => Promise<void>;
@@ -93,14 +95,13 @@ export interface ProfileUpdate {
   full_name?: string;
   avatar_url?: string;
   about?: string;
-  // Add other writable profile fields as needed
 }
 
 export function useDashboardLogic(): DashboardUIProps {
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [preferences, setPreferences] = useState<UserPreferences>({
     acceptsCalls: true,
@@ -110,7 +111,7 @@ export function useDashboardLogic(): DashboardUIProps {
     acceptFromLanguages: [],
     isAnonymous: false,
   });
-  
+
   const [showMoodSetup, setShowMoodSetup] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [newPostText, setNewPostText] = useState('');
@@ -135,7 +136,7 @@ export function useDashboardLogic(): DashboardUIProps {
         router.push('/auth');
         return;
       }
-      
+
       const { data, error: profileError } = await supabase
         .from('profiles')
         .select('*')
@@ -149,7 +150,7 @@ export function useDashboardLogic(): DashboardUIProps {
       }
 
       const avatarUrl = data.avatar_url ? `/api/media/avatars/${data.avatar_url}` : null;
-      
+
       setProfile({
         id: data.id,
         avatarUrl,
@@ -158,10 +159,10 @@ export function useDashboardLogic(): DashboardUIProps {
         about: data.about || '',
         currentMood: data.current_mood || '',
       });
-      
+
       setCurrentMood(data.current_mood || '');
       setAboutText(data.about || '');
-      
+
       setPreferences({
         acceptsCalls: data.accepts_calls ?? true,
         acceptsVideoCalls: data.accepts_video_calls ?? false,
@@ -170,30 +171,30 @@ export function useDashboardLogic(): DashboardUIProps {
         acceptFromLanguages: data.accept_from_languages || [],
         isAnonymous: data.is_anonymous ?? false,
       });
-      
+
       if (!data.current_mood) {
         setShowMoodSetup(true);
       }
-      
+
       setIsLoading(false);
     };
-    
+
     init();
   }, [router, supabase]);
 
   // Online count effect
   useEffect(() => {
     if (isLoading) return;
-    
+
     const fetchOnlineCount = async () => {
       const { count, error } = await supabase
         .from('profiles')
         .select('*', { count: 'exact', head: true })
         .gte('last_seen', new Date(Date.now() - 60_000).toISOString());
-        
+
       setOnlineCount(error ? 0 : count ?? 0);
     };
-    
+
     fetchOnlineCount();
     const interval = setInterval(fetchOnlineCount, 30_000);
     return () => clearInterval(interval);
@@ -202,7 +203,7 @@ export function useDashboardLogic(): DashboardUIProps {
   // Posts effect
   useEffect(() => {
     if (!profile || isLoading) return;
-    
+
     const loadPosts = async () => {
       const { data, error } = await supabase
         .from('posts')
@@ -229,11 +230,11 @@ export function useDashboardLogic(): DashboardUIProps {
       const mapped = data.map((p) => {
         const mediaUrls = (Array.isArray(p.media_urls) ? p.media_urls : []) as string[];
         const proxiedMediaUrls = mediaUrls.map((path: string) => `/api/media/posts/${path}`);
-        
+
         const avatarUrl = p.profiles?.is_anonymous
           ? null
           : p.profiles?.avatar_url || null;
-          
+
         return {
           id: p.id,
           userId: p.user_id,
@@ -244,18 +245,20 @@ export function useDashboardLogic(): DashboardUIProps {
           commentsCount: p.comments_count || 0,
           isLiked: false,
           isAnonymous: p.is_anonymous || p.profiles?.is_anonymous,
-          user: p.profiles ? {
-            id: p.profiles.id,
-            fullName: p.profiles.is_anonymous ? null : p.profiles.full_name,
-            avatarUrl,
-            isAnonymous: p.profiles.is_anonymous ?? false,
-          } : undefined,
+          user: p.profiles
+            ? {
+                id: p.profiles.id,
+                fullName: p.profiles.is_anonymous ? null : p.profiles.full_name,
+                avatarUrl,
+                isAnonymous: p.profiles.is_anonymous ?? false,
+              }
+            : undefined,
         };
       });
-      
+
       setPosts(mapped);
     };
-    
+
     loadPosts();
   }, [profile, isLoading, supabase]);
 
@@ -272,7 +275,7 @@ export function useDashboardLogic(): DashboardUIProps {
       router.push('/auth');
       return;
     }
-    
+
     const { error } = await supabase
       .from('profiles')
       .upsert({
@@ -281,7 +284,7 @@ export function useDashboardLogic(): DashboardUIProps {
         ...updates,
       })
       .select();
-      
+
     if (error) {
       console.error('Profile save error:', error);
       throw new Error('Failed to save settings.');
@@ -290,17 +293,13 @@ export function useDashboardLogic(): DashboardUIProps {
 
   const handleSaveMoodSetup = async () => {
     if (!currentMood) {
-      setError('Please select how you\'re feeling today.');
+      setError("Please select how you're feeling today.");
       return;
     }
-    
+
     try {
       await saveProfileToDB({ current_mood: currentMood });
-      
-      setProfile(prev =>
-        prev ? { ...prev, currentMood } : null
-      );
-      
+      setProfile(prev => (prev ? { ...prev, currentMood } : null));
       setShowMoodSetup(false);
       setError(null);
     } catch (err) {
@@ -311,7 +310,7 @@ export function useDashboardLogic(): DashboardUIProps {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-    
+
     const validFiles = Array.from(files).slice(0, 4 - mediaFiles.length);
     setMediaFiles(prev => [...prev, ...validFiles]);
     const newPreviews = validFiles.map(file => URL.createObjectURL(file));
@@ -326,102 +325,80 @@ export function useDashboardLogic(): DashboardUIProps {
     });
   };
 
-  const handlePostSubmit = async () => {
-    if (!newPostText.trim() || !profile) return;
-    
+  // ✅ Corrected: no duplicate, uses single ID, optimistic update
+  const handlePostSubmit = async (text: string, mediaFiles: File[], isAnonymous: boolean) => {
+    if (!text.trim() || !profile) return;
+
     setIsSubmitting(true);
     setError(null);
     let mediaUrls: string[] = [];
-    
+
     try {
-      if (mediaFiles.length > 0) {
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError || !session?.user) {
-          throw new Error('Authentication required');
-        }
-        
-        const uploadPromises = mediaFiles.map(async (file) => {
-          const fileExt = file.name.split('.').pop();
-          const fileName = `${uuidv4()}.${fileExt}`;
-          const filePath = `posts/${session.user.id}/${fileName}`;
-          
-          const { error: uploadError } = await supabase.storage
-            .from('posts')
-            .upload(filePath, file, {
-              upsert: false,
-              contentType: file.type
-            });
-            
-          if (uploadError) throw uploadError;
-          return filePath;
-        });
-        
-        mediaUrls = await Promise.all(uploadPromises);
-      }
-      
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       if (sessionError || !session?.user) {
         throw new Error('Authentication required');
       }
-      
+
+      // Upload media
+      if (mediaFiles.length > 0) {
+        const uploadPromises = mediaFiles.map(async (file) => {
+          const fileExt = file.name.split('.').pop();
+          const fileName = `${uuidv4()}.${fileExt}`;
+          const filePath = `posts/${session.user.id}/${fileName}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from('posts')
+            .upload(filePath, file, {
+              upsert: false,
+              contentType: file.type,
+            });
+
+          if (uploadError) throw uploadError;
+          return filePath;
+        });
+
+        mediaUrls = await Promise.all(uploadPromises);
+      }
+
+      // Generate ID once
+      const newPostId = uuidv4();
+
+      // Insert into DB
       const { error: postError } = await supabase
         .from('posts')
         .insert({
-          id: uuidv4(),
+          id: newPostId,
           user_id: session.user.id,
-          text: newPostText.trim(),
+          text: text.trim(),
           media_urls: mediaUrls.length > 0 ? mediaUrls : null,
-          is_anonymous: preferences.isAnonymous,
+          is_anonymous: isAnonymous,
           created_at: new Date().toISOString(),
         });
-        
+
       if (postError) throw postError;
-      
-      const { data: newPostData, error: fetchError } = await supabase
-        .from('posts')
-        .select(`
-          *,
-          comments_count,
-          profiles: user_id (
-            id,
-            full_name,
-            avatar_url,
-            is_anonymous
-          )
-        `)
-        .eq('user_id', session.user.id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
-        
-      if (fetchError) throw fetchError;
-      
+
+      // ✅ Build optimistic post (only once!)
       const newPost: Post = {
-        id: newPostData.id,
-        userId: newPostData.user_id,
-        text: newPostData.text,
-        mediaUrls: newPostData.media_urls || [],
-        createdAt: new Date(newPostData.created_at),
-        likes: newPostData.likes_count || 0,
-        commentsCount: newPostData.comments_count || 0,
+        id: newPostId,
+        userId: session.user.id,
+        text: text.trim(),
+        mediaUrls: mediaUrls.map(path => `/api/media/posts/${path}`),
+        createdAt: new Date(),
+        likes: 0,
+        commentsCount: 0,
         isLiked: false,
-        isAnonymous: newPostData.is_anonymous,
-        user: newPostData.profiles ? {
-          id: newPostData.profiles.id,
-          fullName: newPostData.profiles.is_anonymous ? null : newPostData.profiles.full_name,
-          avatarUrl: newPostData.profiles.is_anonymous
-            ? null
-            : newPostData.profiles.avatar_url,
-          isAnonymous: newPostData.profiles.is_anonymous ?? false,
-        } : undefined,
+        isAnonymous,
+        user: profile
+          ? {
+              id: profile.id,
+              fullName: isAnonymous ? null : profile.fullName,
+              avatarUrl: isAnonymous ? null : profile.avatarUrl,
+              isAnonymous,
+            }
+          : undefined,
       };
-      
+
       setPosts(prev => [newPost, ...prev]);
-      setNewPostText('');
-      setMediaFiles([]);
-      setMediaPreviews([]);
-      
-      if (fileInputRef.current) fileInputRef.current.value = '';
     } catch (err) {
       console.error('Post creation failed:', err);
       setError(err instanceof Error ? err.message : 'Failed to share post. Please try again.');
@@ -433,7 +410,7 @@ export function useDashboardLogic(): DashboardUIProps {
   const toggleAcceptsCalls = async () => {
     try {
       const newValue = !preferences.acceptsCalls;
-      setPreferences((prev) => ({ ...prev, acceptsCalls: newValue }));
+      setPreferences(prev => ({ ...prev, acceptsCalls: newValue }));
       await saveProfileToDB({ accepts_calls: newValue });
     } catch (err) {
       console.error('Failed to update call preference:', err);
@@ -444,7 +421,7 @@ export function useDashboardLogic(): DashboardUIProps {
   const toggleAcceptsVideoCalls = async () => {
     try {
       const newValue = !preferences.acceptsVideoCalls;
-      setPreferences((prev) => ({ ...prev, acceptsVideoCalls: newValue }));
+      setPreferences(prev => ({ ...prev, acceptsVideoCalls: newValue }));
       await saveProfileToDB({ accepts_video_calls: newValue });
     } catch (err) {
       console.error('Failed to update video call preference:', err);
@@ -455,7 +432,7 @@ export function useDashboardLogic(): DashboardUIProps {
   const toggleAnonymity = async () => {
     try {
       const newValue = !preferences.isAnonymous;
-      setPreferences((prev) => ({ ...prev, isAnonymous: newValue }));
+      setPreferences(prev => ({ ...prev, isAnonymous: newValue }));
       await saveProfileToDB({ is_anonymous: newValue });
     } catch (err) {
       console.error('Failed to update anonymity preference:', err);
@@ -468,10 +445,10 @@ export function useDashboardLogic(): DashboardUIProps {
     if (!firstName.trim()) {
       throw new Error('First name is required');
     }
-    
+
     try {
       await saveProfileToDB({ full_name: fullName });
-      setProfile(prev => prev ? { ...prev, fullName } : null);
+      setProfile(prev => (prev ? { ...prev, fullName } : null));
       setError(null);
     } catch (err) {
       console.error('Name update failed:', err);
@@ -481,25 +458,25 @@ export function useDashboardLogic(): DashboardUIProps {
 
   const updateAvatar = async (file: File) => {
     if (!profile) throw new Error('Profile not loaded');
-    
+
     try {
       const fileExt = file.name.split('.').pop();
       const fileName = `${uuidv4()}.${fileExt}`;
       const filePath = `${profile.id}/${fileName}`;
-      
+
       const { error: uploadError } = await supabase.storage
         .from('avatars')
         .upload(filePath, file, {
           upsert: false,
           contentType: file.type,
         });
-        
+
       if (uploadError) throw uploadError;
-      
+
       await saveProfileToDB({ avatar_url: filePath });
-      
+
       const proxyUrl = `/api/media/avatars/${filePath}`;
-      setProfile((prev) => (prev ? { ...prev, avatarUrl: proxyUrl } : null));
+      setProfile(prev => (prev ? { ...prev, avatarUrl: proxyUrl } : null));
       setError(null);
     } catch (err) {
       console.error('Avatar upload failed:', err);
@@ -509,10 +486,10 @@ export function useDashboardLogic(): DashboardUIProps {
 
   const saveAbout = async () => {
     if (!profile) return;
-    
+
     try {
       await saveProfileToDB({ about: aboutText });
-      setProfile(prev => prev ? { ...prev, about: aboutText } : null);
+      setProfile(prev => (prev ? { ...prev, about: aboutText } : null));
       setIsEditingAbout(false);
       setError(null);
     } catch (err) {
@@ -542,7 +519,6 @@ export function useDashboardLogic(): DashboardUIProps {
     isSubmitting,
     error,
     fileInputRef,
-    // About section
     aboutText,
     setAboutText,
     isEditingAbout,
@@ -550,14 +526,12 @@ export function useDashboardLogic(): DashboardUIProps {
     isExpanded,
     setIsExpanded,
     saveAbout,
-    // Mood setup
     currentMood,
     setCurrentMood,
-    // Callbacks
     handleSaveMoodSetup,
     handleFileChange,
     removeMedia,
-    handlePostSubmit,
+    handlePostSubmit, // ✅ Now matches interface
     toggleAcceptsCalls,
     toggleAcceptsVideoCalls,
     toggleAnonymity,
