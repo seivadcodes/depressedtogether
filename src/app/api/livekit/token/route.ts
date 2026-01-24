@@ -3,12 +3,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase';
 import { AccessToken } from 'livekit-server-sdk';
 
+// ✅ CRITICAL: Use Node.js runtime to access private env vars in Vercel
+export const runtime = 'nodejs';
+
+// Optional but recommended: disable static optimization
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: NextRequest) {
   try {
     // ✅ Runtime check — safe and correct
     if (!process.env.LIVEKIT_API_KEY || !process.env.LIVEKIT_API_SECRET) {
+      console.error('LiveKit env vars missing at runtime');
       return NextResponse.json(
-        { error: 'Server misconfigured' },
+        { error: 'Server misconfigured: missing LiveKit API credentials' },
         { status: 500 }
       );
     }
