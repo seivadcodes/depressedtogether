@@ -3,17 +3,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase';
 import { AccessToken } from 'livekit-server-sdk';
 
-if (!process.env.LIVEKIT_API_KEY || !process.env.LIVEKIT_API_SECRET) {
-  throw new Error('Missing LIVEKIT_API_KEY or LIVEKIT_API_SECRET in .env.local');
-}
-
-const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY;
-const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET;
-
-export const dynamic = 'force-dynamic'; // 👈 ADD THIS LINE
+export const dynamic = 'force-dynamic'; // 👈 Keep this
 
 export async function POST(req: NextRequest) {
   try {
+    // ✅ Move env check INSIDE the handler — runs at request time, not build time
+    if (!process.env.LIVEKIT_API_KEY || !process.env.LIVEKIT_API_SECRET) {
+      console.error('LiveKit API key or secret missing at runtime');
+      return NextResponse.json(
+        { error: 'Server misconfigured: LiveKit credentials missing' },
+        { status: 500 }
+      );
+    }
+
     const { room, identity: userId, name } = await req.json();
 
     if (!room || !userId || typeof name !== 'string') {
@@ -33,17 +35,21 @@ export async function POST(req: NextRequest) {
 
     const displayName = name || profile.full_name || 'Anonymous';
 
-    const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
-      identity: userId,
-      name: displayName,
-      ttl: '10m',
-    });
+    const at = new AccessToken(
+      process.env.LIVEKIT_API_KEY!,
+      process.env.LIVEKIT_API_SECRET!,
+      {
+        identity: userId,
+        name: displayName,
+        ttl: '10m',
+      }
+    );
 
-    at.addGrant({ 
-      room, 
-      roomJoin: true, 
-      canPublish: true, 
-      canSubscribe: true 
+    at.addGrant({
+      room,
+      roomJoin: true,
+      canPublish: true,
+      canSubscribe: true,
     });
 
     const token = await at.toJwt();
