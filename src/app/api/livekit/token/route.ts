@@ -3,7 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase';
 import { AccessToken } from 'livekit-server-sdk';
 
-
+if (!process.env.LIVEKIT_API_KEY || !process.env.LIVEKIT_API_SECRET) {
+  throw new Error('Missing LIVEKIT_API_KEY or LIVEKIT_API_SECRET in .env.local');
+}
 
 const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY;
 const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET;
