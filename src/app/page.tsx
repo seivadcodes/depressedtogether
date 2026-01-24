@@ -323,7 +323,7 @@ export default function HomePage() {
           }}
         >
           <p style={{ color: baseColors.text.secondary, fontSize: '0.95rem', lineHeight: '1.6' }}>
-            <strong>Important:</strong> This platform connects people for peer support. It&apos;s not a replacement for professional mental health care. If you&apos;re in crisis, please contact emergency services.
+            <strong>Important:</strong> This platform connects people for peer support. It&apos;s not a replacement for professional mental health care. If you&apos;re in crisis, please contact emergency services!
           </p>
         </div>
       </div>
