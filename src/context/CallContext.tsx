@@ -169,7 +169,7 @@ export function CallProvider({
     };
   }, [callRoom]);
 
-  // Handle mute state changes
+  // Handle mute state changessss
   useEffect(() => {
     if (localAudioTrack && callState === 'connected') {
       const mediaStreamTrack = localAudioTrack.mediaStreamTrack;
