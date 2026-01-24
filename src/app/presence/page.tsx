@@ -307,7 +307,7 @@ export default function PresencePage() {
               ))}
             </ul>
             <div className="mt-4 text-center text-sm text-gray-500">
-              <p>{onlineUsers.length} active user{onlineUsers.length !== 1 ? 's' : ''}</p>
+              <p>{onlineUsers.length} active users{onlineUsers.length !== 1 ? 's' : ''}</p>
             </div>
           </>
         )}
