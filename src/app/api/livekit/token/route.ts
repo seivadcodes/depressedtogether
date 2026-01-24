@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
     // ✅ Runtime check — safe and correct
     if (!process.env.LIVEKIT_API_KEY || !process.env.LIVEKIT_API_SECRET) {
       return NextResponse.json(
-        { error: 'Server misconfigured: missing LiveKit API credentials' },
+        { error: 'Server misconfigured' },
         { status: 500 }
       );
     }
