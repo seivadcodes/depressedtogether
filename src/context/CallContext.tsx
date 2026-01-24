@@ -179,160 +179,16 @@ export function CallProvider({
     }
   }, [isMuted, localAudioTrack, callState]);
 
-
-  const prewarmConnection = useCallback(async (roomName: string) => {
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user) return;
-
-    // Pre-fetch token in background
-    fetch('/api/livekit/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        room: roomName,
-        identity: session.user.id,
-        name: session.user.user_metadata?.full_name || 'Anonymous',
-      }),
-    }).then(res => {
-      if (res.ok) {
-        console.log('CallCheck: Pre-warmed token for', roomName);
-        // Store token for immediate use
-        res.json().then(({ token }) => {
-          sessionStorage.setItem(`prewarm_${roomName}`, token);
-        });
-      }
-    });
-  } catch (error) {
-    // Silent fail - this is just optimization
-  }
-}, [supabase]);
-
-// Update the startCall function in the same CallProvider:
-const startCall = async (calleeId: string, calleeName: string, type: CallType, roomName: string, conversationId: string, avatarUrl?: string | null) => {
-  try {
-    // Pre-warm connection immediately
-    prewarmConnection(roomName);
-    
-    // Reset duration for new call
-    setCallDuration(0);
-    
-    setCallType(type);
-    setCalleeName(calleeName);
-    setCalleeAvatar(avatarUrl || null);
-    setParticipantName(calleeName);
-    setParticipantAvatar(avatarUrl || null);
-    setCallState('calling');
-    setCurrentConversationId(conversationId);
-    
-    // Get current user info
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user) throw new Error('User not authenticated');
-    
-    const callerName = session.user.user_metadata?.full_name || 
+  const connectToRoom = async (roomName: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) throw new Error('User not authenticated');
+      
+      const userName = session.user.user_metadata?.full_name || 
                       session.user.email?.split('@')[0] || 
                       'Anonymous';
-    
-    const callerAvatar = session.user.user_metadata?.avatar_url || null;
-    
-    // Send notification to callee
-    await supabase.channel('call_notifications').send({
-      type: 'broadcast',
-      event: 'incoming_call',
-      payload: {
-        callerId: session.user.id,
-        callerName,
-        callerAvatar,
-        callType: type,
-        roomName,
-        conversationId,
-      },
-    });
-    
-  } catch (error) {
-    console.error('CallCheck: Failed to start call:', error);
-    toast.error('Failed to start call');
-    setCallState('idle');
-  }
-};
-
-// Update the acceptCall function:
-// Update the acceptCall function:
-// Update the acceptCall function:
-const acceptCall = async (roomName: string, conversationId: string) => {
-  try {
-    console.log('CallCheck: Accepting call for room', roomName);
-    
-    if (!incomingCall) {
-      throw new Error('No incoming call to accept');
-    }
-    
-    // Use pre-warmed token if available
-    const prewarmedToken = sessionStorage.getItem(`prewarm_${roomName}`);
-    let token: string | undefined = prewarmedToken || undefined;
-    
-    if (!token) {
-      // Fast token fetch with minimal payload
-      const tokenRes = await fetch('/api/livekit/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          room: roomName, 
-          identity: userId, 
-          name: fullName || 'User'
-        }),
-      });
       
-      if (!tokenRes.ok) throw new Error('Token fetch failed');
-      const data = await tokenRes.json();
-      token = data.token;
-    }
-    
-    // Clear incoming call state immediately
-    setIncomingCall(null);
-    
-    // Connect to room in background while notifying caller
-    // Use the token we already have (it's guaranteed to be a string now)
-    const connectPromise = connectToRoom(roomName, token!); // Use non-null assertion
-    
-    // Notify caller that call was accepted (don't wait for connection)
-    supabase.channel('call_notifications').send({
-      type: 'broadcast',
-      event: 'call_accepted',
-      payload: { roomName, conversationId },
-    });
-    
-    // Set state to connecting immediately for better UX
-    setCallState('connecting');
-    setParticipantName(incomingCall.callerName);
-    setParticipantAvatar(incomingCall.callerAvatar || null);
-    setCurrentConversationId(conversationId);
-    
-    // Wait for connection to complete
-    await connectPromise;
-    
-  } catch (error) {
-    console.error('CallCheck: Failed to accept call:', error);
-    toast.error('Failed to accept call');
-    hangUp();
-  }
-};
-
- // Update the connectToRoom function signature and logic
-const connectToRoom = async (roomName: string, preloadedToken?: string) => {
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user) throw new Error('User not authenticated');
-    
-    const userName = session.user.user_metadata?.full_name || 
-                    session.user.email?.split('@')[0] || 
-                    'Anonymous';
-    
-    // Use preloaded token if provided, otherwise fetch
-    let token: string;
-    if (preloadedToken) {
-      token = preloadedToken;
-    } else {
+      // Get token from API
       const tokenRes = await fetch('/api/livekit/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -348,56 +204,149 @@ const connectToRoom = async (roomName: string, preloadedToken?: string) => {
         throw new Error(err.error || 'Failed to get token');
       }
       
-      const data = await tokenRes.json();
-      token = data.token;
-    }
-    
-    // Connect to room
-    const room = new Room();
-    
-    // Handle track subscriptions
-    room.on('trackSubscribed', (track, _, participant) => {
-      console.log('CallCheck: Track subscribed', track.kind);
-      if (track.kind === 'audio' && track instanceof RemoteAudioTrack) {
-        setRemoteAudioTrack(track);
-        remoteParticipantRef.current = participant;
-      }
-    });
-    
-    // Handle remote participant disconnection
-    room.on('participantDisconnected', (participant) => {
-      if (participant === remoteParticipantRef.current) {
-        console.log('CallCheck: Remote participant disconnected');
+      const { token } = await tokenRes.json();
+      
+      // Connect to room
+      const room = new Room();
+      
+      // Handle track subscriptions
+      room.on('trackSubscribed', (track, _, participant) => {
+        console.log('CallCheck: Track subscribed', track.kind);
+        if (track.kind === 'audio' && track instanceof RemoteAudioTrack) {
+          setRemoteAudioTrack(track);
+          remoteParticipantRef.current = participant;
+        }
+      });
+      
+      // Handle remote participant disconnection
+      room.on('participantDisconnected', (participant) => {
+        if (participant === remoteParticipantRef.current) {
+          console.log('CallCheck: Remote participant disconnected');
+          hangUp();
+        }
+      });
+      
+      room.on('disconnected', () => {
+        console.log('CallCheck: Room disconnected');
         hangUp();
+      });
+      
+      await room.connect(process.env.NEXT_PUBLIC_LIVEKIT_URL!, token);
+      console.log('CallCheck: Successfully connected to room', roomName);
+      
+      // Publish local audio track
+      const tracks = await room.localParticipant.createTracks({ audio: true });
+      if (tracks[0]) {
+        await room.localParticipant.publishTrack(tracks[0]);
+        setLocalAudioTrack(tracks[0] as LocalAudioTrack);
       }
-    });
-    
-    room.on('disconnected', () => {
-      console.log('CallCheck: Room disconnected');
+      
+      setCallRoom(room);
+      setCallState('connected');
+      return room;
+    } catch (error) {
+      console.error('CallCheck: Failed to connect to room:', error);
+      toast.error('Failed to connect to call');
       hangUp();
-    });
-    
-    await room.connect(process.env.NEXT_PUBLIC_LIVEKIT_URL!, token);
-    console.log('CallCheck: Successfully connected to room', roomName);
-    
-    // Publish local audio track
-    const tracks = await room.localParticipant.createTracks({ audio: true });
-    if (tracks[0]) {
-      await room.localParticipant.publishTrack(tracks[0]);
-      setLocalAudioTrack(tracks[0] as LocalAudioTrack);
+      throw error;
     }
-    
-    setCallRoom(room);
-    setCallState('connected');
-    return room;
-  } catch (error) {
-    console.error('CallCheck: Failed to connect to room:', error);
-    toast.error('Failed to connect to call');
-    hangUp();
-    throw error;
-  }
-};
+  };
 
+  const startCall = async (calleeId: string, calleeName: string, type: CallType, roomName: string, conversationId: string, avatarUrl?: string | null) => {
+    try {
+      console.log('CallCheck: Starting call to', calleeName);
+      
+      // Validate inputs
+      if (!calleeId || !calleeName || !roomName || !conversationId) {
+        throw new Error('Missing required call parameters');
+      }
+      
+      // Reset duration for new call
+      setCallDuration(0);
+      
+      setCallType(type);
+      setCalleeName(calleeName);
+      setCalleeAvatar(avatarUrl || null);
+      setParticipantName(calleeName);
+      setParticipantAvatar(avatarUrl || null);
+      setCallState('calling');
+      setCurrentConversationId(conversationId);
+      
+      // Get current user info
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) throw new Error('User not authenticated');
+      
+      const callerName = session.user.user_metadata?.full_name || 
+                        session.user.email?.split('@')[0] || 
+                        'Anonymous';
+      
+      const callerAvatar = session.user.user_metadata?.avatar_url || null;
+      
+      // Send notification to callee
+      await supabase.channel('call_notifications').send({
+        type: 'broadcast',
+        event: 'incoming_call',
+        payload: {
+          callerId: session.user.id,
+          callerName,
+          callerAvatar,
+          callType: type,
+          roomName,
+          conversationId,
+        },
+      });
+      
+    } catch (error) {
+      console.error('CallCheck: Failed to start call:', error);
+      toast.error('Failed to start call');
+      setCallState('idle');
+    }
+  };
+
+  const acceptCall = async (roomName: string, conversationId: string) => {
+    try {
+      console.log('CallCheck: Accepting call for room', roomName);
+      
+      if (!incomingCall) {
+        throw new Error('No incoming call to accept');
+      }
+      
+      // Reset duration for new call
+      setCallDuration(0);
+      
+      setCallType(incomingCall.callType);
+      setParticipantName(incomingCall.callerName);
+      setParticipantAvatar(incomingCall.callerAvatar || null);
+      setCurrentConversationId(conversationId);
+      
+      // Notify caller that call was accepted
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) throw new Error('User not authenticated');
+      
+      await supabase.channel('call_notifications').send({
+        type: 'broadcast',
+        event: 'call_accepted',
+        payload: {
+          roomName: roomName,
+          conversationId,
+        },
+      });
+      
+      // Clear incoming call state first
+      setIncomingCall(null);
+      
+      // Set state to connecting BEFORE connecting to room
+      setCallState('connecting');
+      
+      // Connect to room
+      await connectToRoom(roomName);
+      
+    } catch (error) {
+      console.error('CallCheck: Failed to accept call:', error);
+      toast.error('Failed to accept call');
+      hangUp();
+    }
+  };
 
   const rejectCall = () => {
     if (!incomingCall) return;
