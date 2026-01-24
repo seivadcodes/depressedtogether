@@ -1188,7 +1188,7 @@ export default function SubmitResourcePage() {
           borderRadius: '0.75rem',
           border: '1px solid rgba(59, 130, 246, 0.2)',
         }}>
-          <p><strong>Important:</strong> All submissions are reviewed before appearing publicly.</p>
+          <p><strong>Important:</strong> All submissions are reviewed before appearing publicly..</p>
           <p style={{ marginTop: '0.25rem' }}>
             Video uploads are stored securely and only accessible after approval.
           </p>
